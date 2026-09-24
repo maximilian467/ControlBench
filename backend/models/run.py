@@ -10,6 +10,8 @@ class RunCreate(BaseModel):
     # None, wenn das System im Run nie stabilisiert bzw. sich nie erholt hat
     stability_time: float | None = None
     recovery_time: float | None = None
+    # Anzahl der Simulationsschritte; None bei alten Runs, die das nicht erfasst haben
+    num_steps: int | None = None
 
 
 class Run(RunCreate):
