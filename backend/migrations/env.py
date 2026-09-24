@@ -17,8 +17,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Die Datenbankadresse steht nur in database/db.py, nicht doppelt in alembic.ini
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# Die Datenbankadresse steht nur in database/db.py, nicht doppelt in alembic.ini.
+# Ausnahme: Die Tests geben eine eigene Test-Datenbank vor, die bleibt dann erhalten.
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

@@ -13,13 +13,15 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 
-@event.listens_for(engine, "connect")
-def _enable_foreign_keys(dbapi_connection, connection_record):
+def enable_sqlite_foreign_keys(dbapi_connection, connection_record):
     # SQLite prüft Fremdschlüssel nur, wenn man es pro Verbindung einschaltet
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys = ON")
     cursor.close()
 
+
+# Wird bei jeder neuen Verbindung ausgeführt; die Tests hängen es an ihre eigene Engine
+event.listen(engine, "connect", enable_sqlite_foreign_keys)
 
 SessionLocal = sessionmaker(bind=engine)
 

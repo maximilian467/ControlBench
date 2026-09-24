@@ -1,0 +1,68 @@
+def test_create_run(client, experiment):
+    data = {
+        "experiment_id": experiment["id"],
+        "seed": 42,
+        "reward": -150.3,
+        "stability_time": 2.4,
+        "num_steps": 200,
+        "duration": 10.5,
+    }
+    res = client.post("/runs", json=data)
+
+    assert res.status_code == 201
+    body = res.json()
+    assert body["id"] == 1
+    assert body["seed"] == 42
+    assert body["stability_time"] == 2.4
+    # Nicht mitgeschickte optionale Felder werden zu None (JSON: null)
+    assert body["recovery_time"] is None
+
+
+def test_create_run_for_unknown_experiment_returns_404(client):
+    res = client.post("/runs", json={"experiment_id": 999, "seed": 1, "reward": 0})
+
+    assert res.status_code == 404
+
+
+def test_create_run_with_invalid_seed_returns_422(client, experiment):
+    res = client.post("/runs", json={"experiment_id": experiment["id"], "seed": "abc", "reward": 0})
+
+    assert res.status_code == 422
+
+
+def test_list_runs_can_be_filtered_by_experiment(client):
+    exp_a = client.post("/experiments", json={"name": "A", "environment": "Pendulum-v1", "controller": "SAC"}).json()
+    exp_b = client.post("/experiments", json={"name": "B", "environment": "Pendulum-v1", "controller": "LQR"}).json()
+    client.post("/runs", json={"experiment_id": exp_a["id"], "seed": 1, "reward": -100})
+    client.post("/runs", json={"experiment_id": exp_a["id"], "seed": 2, "reward": -110})
+    client.post("/runs", json={"experiment_id": exp_b["id"], "seed": 1, "reward": -90})
+
+    all_runs = client.get("/runs").json()
+    runs_of_a = client.get("/runs", params={"experiment_id": exp_a["id"]}).json()
+
+    assert len(all_runs) == 3
+    assert [r["seed"] for r in runs_of_a] == [1, 2]
+    assert all(r["experiment_id"] == exp_a["id"] for r in runs_of_a)
+
+
+def test_get_run_by_id(client, run):
+    res = client.get(f"/runs/{run['id']}")
+
+    assert res.status_code == 200
+    assert res.json() == run
+
+
+def test_get_unknown_run_returns_404(client):
+    assert client.get("/runs/999").status_code == 404
+
+
+def test_delete_run(client, run):
+    res = client.delete(f"/runs/{run['id']}")
+
+    assert res.status_code == 204
+    assert res.content == b""  # 204 = kein Inhalt
+    assert client.get(f"/runs/{run['id']}").status_code == 404
+
+
+def test_delete_unknown_run_returns_404(client):
+    assert client.delete("/runs/999").status_code == 404
