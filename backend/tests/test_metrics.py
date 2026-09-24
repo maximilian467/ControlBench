@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -109,3 +110,12 @@ def test_list_metric_names(client, run):
     assert res.status_code == 200
     assert res.json() == ["episode_reward", "success_rate"]
     assert client.get("/runs/999/metrics/names").status_code == 404
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_create_metric_with_non_finite_value_returns_422(client, run, value):
+    # Pythons json-Modul schreibt float("nan") als NaN; ein abgestürztes Training kann so etwas schicken
+    body = f'[{{"name": "episode_reward", "step": 0, "value": {value}}}]'
+    res = client.post(f"/runs/{run['id']}/metrics", content=body, headers={"Content-Type": "application/json"})
+
+    assert res.status_code == 422

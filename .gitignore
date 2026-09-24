@@ -9,9 +9,22 @@ __pycache__/
 *.db-journal
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
 
-# Lokale Umgebungsvariablen
+# Lokale Umgebungsvariablen und Zugangsdaten
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 
 # Lokale Sicherungen der Experiment-Skripte
 experiments/results/
+
+# Editor, Betriebssystem, Logs
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

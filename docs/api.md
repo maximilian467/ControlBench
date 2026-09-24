@@ -26,7 +26,7 @@ All requests and responses use JSON. There is no authentication (ControlBench is
 | Code | Meaning |
 |---|---|
 | `404` | The ID does not exist, or a run refers to an unknown experiment. |
-| `422` | The data is invalid: a required field is missing or has the wrong type, e.g. `"seed": "abc"`. The response names the affected field. |
+| `422` | The data is invalid: a required field is missing or has the wrong type, e.g. `"seed": "abc"`, or a number is `NaN`/`Infinity`. The response names the affected field. |
 
 Errors are returned in FastAPI's format: `{"detail": ...}`.
 

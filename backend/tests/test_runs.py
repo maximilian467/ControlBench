@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_create_run(client, experiment):
     data = {
         "experiment_id": experiment["id"],
@@ -107,3 +110,13 @@ def test_update_run_with_null_reward_returns_422(client, run):
 
 def test_update_unknown_run_returns_404(client):
     assert client.patch("/runs/999", json={"reward": 1.0}).status_code == 404
+
+
+@pytest.mark.parametrize("field", ["reward", "stability_time", "duration"])
+def test_run_with_non_finite_value_returns_422(client, experiment, run, field):
+    base = '"experiment_id": %d, "controller": "SAC", "name": "SAC default", "seed": 0' % experiment["id"]
+    create = f'{{{base}, "reward": 1.0, "{field}": NaN}}'
+    headers = {"Content-Type": "application/json"}
+
+    assert client.post("/runs", content=create, headers=headers).status_code == 422
+    assert client.patch(f"/runs/{run['id']}", content=f'{{"{field}": Infinity}}', headers=headers).status_code == 422

@@ -40,7 +40,8 @@ def client(engine):
 
     # Dependency Override: Überall, wo eine Route Depends(get_db) verlangt, bekommt sie jetzt get_test_db
     app.dependency_overrides[get_db] = get_test_db
-    with TestClient(app) as test_client:
+    # base_url: Die App nimmt nur Anfragen an localhost an (TrustedHostMiddleware in main.py)
+    with TestClient(app, base_url="http://127.0.0.1") as test_client:
         yield test_client
     app.dependency_overrides.clear()
 

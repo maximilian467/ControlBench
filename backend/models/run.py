@@ -4,6 +4,9 @@ from pydantic import BaseModel, ConfigDict
 class RunCreate(BaseModel):
     """Daten, die der Client beim Speichern eines Runs schickt."""
 
+    # NaN und Infinity ablehnen (422): SQLite speichert NaN als NULL, Infinity käme als null zurück
+    model_config = ConfigDict(allow_inf_nan=False)
+
     experiment_id: int
     controller: str  # z. B. "SAC", "PPO", "LQR"
     # Name der Konfiguration, z. B. "SAC lr 3e-4". Mehrere Seeds derselben Konfiguration tragen denselben Namen,
@@ -28,6 +31,8 @@ class RunUpdate(BaseModel):
     und die Endergebnisse am Ende nachtragen. Nur mitgeschickte Felder werden geändert.
     """
 
+    model_config = ConfigDict(allow_inf_nan=False)
+
     reward: float | None = None
     stability_time: float | None = None
     recovery_time: float | None = None
@@ -38,7 +43,8 @@ class RunUpdate(BaseModel):
 class Run(RunCreate):
     """Run, wie ihn die API zurückgibt (mit vom Server vergebener ID)."""
 
-    # Erlaubt, das Modell direkt aus einem SQLAlchemy-Objekt zu bauen
-    model_config = ConfigDict(from_attributes=True)
+    # Erlaubt, das Modell direkt aus einem SQLAlchemy-Objekt zu bauen.
+    # allow_inf_nan: Ältere Datenbanken können noch Infinity enthalten, die sollen lesbar bleiben
+    model_config = ConfigDict(from_attributes=True, allow_inf_nan=True)
 
     id: int
