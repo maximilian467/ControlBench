@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design-Tokens
+ * Nur ein dunkles Theme. Hierarchie entsteht über Flächenstufen und Haarlinien,
+ * nicht über Schatten. Genau eine Akzentfarbe (--accent-signal), sparsam eingesetzt:
+ * bester Run, aktive Auswahl. Alles andere ist neutral.
+ */
+:root {
+  --background: #09090a;        /* Seite */
+  --card: #0e0f10;              /* Tabellen, Panels */
+  --popover: #141517;           /* schwebende Flächen */
+  --muted: #16171a;             /* Hover, gedämpfte Flächen */
+  --border: #1f2124;            /* Haarlinien */
+  --input: #26282c;
+
+  --foreground: #e7e7e4;        /* Text, leicht warm statt reinem Weiß */
+  --muted-foreground: #8b8e93;  /* Sekundärtext */
+  --faint-foreground: #5c5f65;  /* Beschriftungen, Einheiten */
+
+  --primary: #e7e7e4;
+  --primary-foreground: #09090a;
+  --secondary: #16171a;
+  --secondary-foreground: #e7e7e4;
+  --accent: #16171a;
+  --accent-foreground: #e7e7e4;
+  --card-foreground: #e7e7e4;
+  --popover-foreground: #e7e7e4;
+
+  --accent-signal: #e2a33c;     /* die eine Akzentfarbe */
+  --destructive: #d9534f;
+  --success: #6fae8a;
+  --ring: #5c5f65;
+
+  /* Farben für Runs in Diagrammen: gedämpft, gut unterscheidbar, kein Neon */
+  --chart-1: #86a8c9;
+  --chart-2: #c9a27e;
+  --chart-3: #8fb79a;
+  --chart-4: #b294b8;
+  --chart-5: #c98a7d;
+
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", monospace;
+  --font-heading: var(--font-sans);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-signal: var(--accent-signal);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--accent-signal) 30%, transparent);
+  }
+}
