@@ -6,6 +6,12 @@ ControlBench speichert Experimente, Runs und Lernkurven zentral in einer Datenba
 
 > **Status:** frühe Entwicklung. Backend, API, Datenbank mit Migrationen und Upload-Vorlage funktionieren. Die React-Oberfläche vergleicht die Konfigurationen eines Experiments (z. B. SAC, PPO, LQR) mit Mittelwert und Streuung über die Seeds und zeigt ihre Lernkurven über Steps oder Rechenzeit, siehe [Roadmap](#roadmap).
 
+![Experiment-Übersicht](docs/screenshots/overview.png)
+
+![Vergleich von SAC, PPO und LQR in einem Experiment](docs/screenshots/experiment.png)
+
+*Mit den Testdaten aus `experiments/example_upload.py`: Lernkurven gemittelt über die Seeds, das Band zeigt Minimum bis Maximum.*
+
 ---
 
 ## Inhalt
