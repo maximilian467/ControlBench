@@ -24,3 +24,4 @@ class RunTable(Base):
     stability_time: Mapped[float | None]
     recovery_time: Mapped[float | None]
     num_steps: Mapped[int | None]
+    duration: Mapped[float | None]

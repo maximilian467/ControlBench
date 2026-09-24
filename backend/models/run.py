@@ -12,6 +12,8 @@ class RunCreate(BaseModel):
     recovery_time: float | None = None
     # Anzahl der Simulationsschritte; None bei alten Runs, die das nicht erfasst haben
     num_steps: int | None = None
+    # Dauer des Runs in Sekunden; None bei alten Runs, die das nicht erfasst haben
+    duration: float | None = None
 
 
 class Run(RunCreate):
