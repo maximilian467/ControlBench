@@ -5,3 +5,6 @@ __pycache__/
 
 # Lokale Datenbank
 *.db
+
+# Lokale Sicherungen der Experiment-Skripte
+experiments/results/

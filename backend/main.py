@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routes import experiments, runs
+from routes import experiments, metrics, runs
 
 # Die Tabellen legt Alembic an: im Ordner backend/ "alembic upgrade head" ausführen
 
@@ -17,3 +17,4 @@ app.add_middleware(
 
 app.include_router(experiments.router)
 app.include_router(runs.router)
+app.include_router(metrics.router)
