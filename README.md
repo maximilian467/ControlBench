@@ -4,7 +4,7 @@
 
 ControlBench speichert Experimente, Runs und Lernkurven zentral in einer Datenbank. Trainings- und Regelungsskripte schicken ihre Ergebnisse über eine REST-API automatisch dorthin, und eine Weboberfläche zeigt sie an. Die Beispiele in diesem Repository beziehen sich auf das Pendel und das Doppelpendel.
 
-> **Status:** frühe Entwicklung. Backend, API, Datenbank mit Migrationen, Upload-Vorlage und eine einfache HTML-Oberfläche funktionieren. Eine React-Oberfläche mit Diagrammen ist in Arbeit, siehe [Roadmap](#roadmap).
+> **Status:** frühe Entwicklung. Backend, API, Datenbank mit Migrationen und Upload-Vorlage funktionieren. Die React-Oberfläche vergleicht die Konfigurationen eines Experiments (z. B. SAC, PPO, LQR) mit Mittelwert und Streuung über die Seeds und zeigt ihre Lernkurven über Steps oder Rechenzeit, siehe [Roadmap](#roadmap).
 
 ---
 
@@ -17,6 +17,8 @@ ControlBench speichert Experimente, Runs und Lernkurven zentral in einer Datenba
 - [Installation](#installation)
 - [Starten](#starten)
 - [Ergebnisse automatisch hochladen](#ergebnisse-automatisch-hochladen)
+  - [Dein eigenes Training anbinden](#dein-eigenes-training-anbinden)
+  - [Große Trainings (Millionen von Steps)](#große-trainings-millionen-von-steps)
 - [API-Referenz](#api-referenz)
 - [Datenmodell](#datenmodell)
 - [Konventionen für vergleichbare Daten](#konventionen-für-vergleichbare-daten)
@@ -38,9 +40,12 @@ Wer ein Regelungsproblem wie das Aufschwingen und Stabilisieren eines Pendels ei
 
 Ohne ein gemeinsames Werkzeug landen solche Ergebnisse in verstreuten CSV-Dateien, Notebooks und Logordnern. ControlBench gibt ihnen eine **einheitliche Struktur**:
 
-- Jeder Ansatz wird ein **Experiment**.
-- Jede Wiederholung mit einem anderen Seed wird ein **Run**.
+- Eine Fragestellung auf einem Environment wird ein **Experiment**, z. B. „Pendel aufschwingen“.
+- Jeder Ansatz darin wird eine **Konfiguration**, z. B. „SAC default“, „PPO default“, „LQR“.
+- Jede Wiederholung einer Konfiguration mit einem anderen Seed wird ein **Run**.
 - Jede Lernkurve wird als **Metrik** gespeichert.
+
+Verglichen werden die **Konfigurationen**, nicht einzelne Runs. Ein RL-Agent kann mit einem Seed hervorragend und mit dem nächsten schlecht abschneiden. Ob SAC generell besser ist als PPO, zeigt erst der Mittelwert über mehrere Seeds samt Streuung. ControlBench zeigt deshalb pro Konfiguration Mittelwert, Standardabweichung und Spannweite, und im Diagramm eine gemittelte Lernkurve mit Band.
 
 Die Daten sind dann über eine einzige API abrufbar, egal ob sie aus einem PyTorch-Training, einer MATLAB-Simulation oder einem handgeschriebenen Regler stammen.
 
@@ -50,20 +55,22 @@ ControlBench ist für den **lokalen Einsatz** auf dem eigenen Rechner gedacht. E
 
 | Begriff | Bedeutung | Beispiel |
 |---|---|---|
-| **Experiment** | eine Kombination aus Environment und Controller, die untersucht wird | „SAC auf Pendulum-v1“ |
-| **Run** | ein einzelner Durchlauf eines Experiments mit einem bestimmten Seed, mit seinen Endergebnissen | Seed 42: Reward −150,3, stabil nach 2,4 s |
+| **Experiment** | eine Fragestellung auf einem Environment, in der mehrere Controller verglichen werden | „Pendulum Controller-Vergleich“ auf `Pendulum-v1` |
+| **Controller** | der Algorithmus bzw. Regler | `SAC`, `PPO`, `LQR` |
+| **Konfiguration** | ein Controller mit bestimmten Einstellungen, erkennbar am `name` des Runs. Runs mit gleichem Namen unterscheiden sich nur im Seed | „SAC default“, „SAC lr 1e-3“ |
+| **Run** | ein einzelner Durchlauf einer Konfiguration mit einem bestimmten Seed, mit seinen Endergebnissen | „SAC default“, Seed 2: Reward −150,3 |
 | **Metrik** | ein Messpunkt einer Kurve innerhalb eines Runs: Name, Step, Wert | `success_rate` bei Step 5000 = 0,82 |
 | **Seed** | Startwert des Zufallsgenerators. Gleicher Seed ergibt reproduzierbare Ergebnisse | `0`, `1`, `2`, … |
 
-Ein Experiment hat viele Runs, ein Run hat viele Metrik-Messpunkte.
+Ein Experiment hat viele Runs, ein Run hat viele Metrik-Messpunkte. Konfigurationen sind keine eigene Tabelle: Sie ergeben sich aus `controller` und `name` der Runs.
 
 ## Architektur
 
 ```
 ┌────────────────────────┐        ┌────────────────────────┐
 │  Trainings-/Regelungs- │        │  Weboberfläche         │
-│  skript (Python)       │        │  (Browser, Port 5500)  │
-│  z. B. SAC, LQR, PID   │        │  HTML + JavaScript     │
+│  skript (Python)       │        │  (Browser, Port 5173)  │
+│  z. B. SAC, LQR, PID   │        │  React + TypeScript    │
 └───────────┬────────────┘        └───────────┬────────────┘
             │  HTTP + JSON                    │  HTTP + JSON (fetch)
             │  requests.post(...)             │
@@ -96,7 +103,9 @@ Die zentrale Designidee ist, dass **alles über die REST-API läuft**. Das Backe
 | Datenbank | SQLite | eine einzige Datei, kein Datenbankserver nötig |
 | Server | [Uvicorn](https://www.uvicorn.org/) | führt die FastAPI-App aus |
 | Tests | [pytest](https://docs.pytest.org/) | automatische Tests des Backends |
-| Frontend | HTML + JavaScript | einfache Oberfläche (React folgt) |
+| Frontend | [React](https://react.dev/) + TypeScript, [Vite](https://vite.dev/) | Oberfläche, Entwicklungsserver |
+| Styling | [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/) | Design-Tokens und Grundkomponenten |
+| Ladeanzeigen | [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) | animierte Ladezustände |
 
 ## Projektstruktur
 
@@ -122,9 +131,16 @@ ControlBench/
 │   │   └── metrics.py
 │   ├── migrations/             # Alembic: env.py und versions/ (eine Datei pro Schemaänderung)
 │   └── tests/                  # pytest-Tests
-├── frontend/
-│   ├── index.html              # Struktur der Oberfläche
-│   └── app.js                  # Verhalten: spricht per fetch mit der API
+├── frontend/                   # React-App (Vite + TypeScript)
+│   ├── package.json            # npm-Abhängigkeiten und Befehle
+│   └── src/
+│       ├── main.tsx            # Einstiegspunkt
+│       ├── App.tsx             # Seiten (Routen)
+│       ├── index.css           # Design-Tokens: Farben, Schriften, Radien
+│       ├── lib/api.ts          # alle Aufrufe ans Backend + TypeScript-Typen
+│       ├── hooks/useAsync.ts   # Laden mit Zustand loading / error / success
+│       ├── components/         # wiederverwendbare Bausteine (Loader, ErrorState, ...)
+│       └── pages/              # eine Datei pro Seite
 ├── experiments/
 │   ├── example_upload.py       # Vorlage: Ergebnisse automatisch hochladen
 │   ├── requirements.txt
@@ -136,7 +152,7 @@ ControlBench/
 
 ## Installation
 
-**Voraussetzungen:** Python **3.10 oder neuer** und Git.
+**Voraussetzungen:** Python **3.10 oder neuer**, [Node.js](https://nodejs.org/) **20 oder neuer** (für das Frontend) und Git.
 
 **1. Repository klonen**
 
@@ -180,9 +196,16 @@ alembic upgrade head
 
 Das legt `backend/controlbench.db` an und führt alle Migrationen aus. Denselben Befehl führst du auch nach jedem `git pull` aus, der neue Migrationen mitbringt.
 
+**5. Frontend-Abhängigkeiten installieren**
+
+```bash
+cd frontend
+npm install
+```
+
 ## Starten
 
-ControlBench besteht aus zwei Teilen, die jeweils in einem eigenen Terminal laufen. In beiden Terminals muss die virtuelle Umgebung aktiv sein.
+ControlBench besteht aus zwei Teilen, die jeweils in einem eigenen Terminal laufen. Für das Backend muss die virtuelle Umgebung aktiv sein.
 
 **Terminal 1: Backend (API)**
 
@@ -199,18 +222,29 @@ Unter **http://127.0.0.1:8000/docs** findest du eine interaktive Dokumentation a
 
 ```bash
 cd frontend
-python -m http.server 5500
+npm run dev
 ```
 
-Dann **http://127.0.0.1:5500** im Browser öffnen. Dort kannst du Experimente anlegen und öffnen sowie Runs anlegen, ansehen und löschen.
+Dann **http://localhost:5173** im Browser öffnen. Änderungen am Code erscheinen sofort, ohne Neuladen.
 
-> Das Frontend muss über Port **5500** laufen, weil das Backend per CORS nur diese Adresse zulässt (siehe `backend/main.py`). Die HTML-Datei direkt per Doppelklick zu öffnen funktioniert nicht.
+> Das Frontend muss über Port **5173** laufen, weil das Backend per CORS nur diese Adresse zulässt (siehe `backend/main.py`). Ist der Port belegt, weicht Vite auf 5174 aus, dann blockiert der Browser die Anfragen.
+
+Läuft das Backend unter einer anderen Adresse, lässt sie sich beim Start setzen: `VITE_API_URL=http://127.0.0.1:9000 npm run dev`.
+
+**Weitere Befehle im Ordner `frontend/`**
+
+```bash
+npm run build    # Typprüfung + Produktions-Build nach frontend/dist
+npm run lint     # Code auf typische Fehler prüfen (oxlint)
+```
 
 ## Ergebnisse automatisch hochladen
 
-Der eigentliche Nutzen von ControlBench: Dein Trainings- oder Regelungsskript schickt seine Ergebnisse selbst an die API, ohne dass du etwas abtippen musst.
+Der eigentliche Nutzen von ControlBench: Dein Trainings- oder Regelungsskript schickt seine Ergebnisse selbst an die API, ohne dass du etwas abtippen musst. Die Vorlage dafür ist [`experiments/example_upload.py`](experiments/example_upload.py).
 
-[`experiments/example_upload.py`](experiments/example_upload.py) ist eine **Vorlage** dafür. Sie funktioniert sofort mit Fake-Daten:
+### Ausprobieren mit Fake-Daten
+
+Die Vorlage funktioniert sofort, ohne echtes Training:
 
 ```bash
 # im Projektordner, Backend muss laufen
@@ -219,54 +253,196 @@ python experiments/example_upload.py
 
 ```
 Experiment #1 angelegt
-Run mit seed=0 läuft ...
-  -> Run #1 gespeichert: reward=-172.24, 82 Messpunkte, Rechenzeit 0.428 s
-Run mit seed=1 läuft ...
+SAC default, seed=0 läuft ...
+  -> Run #1 gespeichert: reward=-144.8, 82 Messpunkte, Rechenzeit 0.632 s
   ...
+LQR, seed=0 läuft ...
+  -> Run #11 gespeichert: reward=-228.79, 82 Messpunkte, Rechenzeit 0.042 s
 ```
 
-### Die Vorlage für dein Projekt übernehmen
+Danach im Frontend das Experiment „Pendulum Controller-Vergleich“ öffnen: SAC, PPO und LQR im Vergleich, mit gemittelten Lernkurven.
 
-1. **Kopiere** `example_upload.py` in dein Projekt.
-2. **Passe die Einstellungen** oben in der Datei an.
-3. **Ersetze `fake_run(seed)`** durch deinen echten Run. Die Funktion muss nur zwei Dinge zurückgeben:
+### Dein eigenes Training anbinden
+
+**Schritt 1: Plane das Experiment.** Überlege vorher, was du vergleichen willst:
+
+| Frage | Beispiel |
+|---|---|
+| Welches Environment? | `Pendulum-v1` |
+| Welche Konfigurationen? | „SAC default“, „PPO default“, „LQR“ |
+| Wie viele Seeds pro Konfiguration? | RL: mindestens 3, besser 5. Ein deterministischer Regler wie LQR: 1 |
+| Welche Metriken im Verlauf? | z. B. `success_rate` und `episode_reward` |
+| Wie oft ein Messpunkt? | siehe [Große Trainings](#große-trainings-millionen-von-steps) |
+
+**Schritt 2: Kopiere die Vorlage** in dein Projekt, z. B. neben dein Trainingsskript.
+
+**Schritt 3: Trage Experiment und Konfigurationen ein.** Oben in der Datei:
 
 ```python
-def my_run(seed: int) -> tuple[dict, list[dict]]:
-    # ... dein SAC-Training oder deine LQR-Regelung ...
+EXPERIMENT = {
+    "name": "Pendel aufschwingen",
+    "environment": "Pendulum-v1",
+    "description": "SAC gegen PPO gegen LQR, Standardparameter",
+}
 
-    results = {                      # Endergebnisse: eine Zahl pro Feld -> Tabelle "runs"
-        "reward": -150.3,
-        "stability_time": 2.4,       # oder None, wenn nie stabil
-        "recovery_time": None,
-        "num_steps": 20_000,
-        "duration": 312.5,           # Rechenzeit in Sekunden
+CONFIGURATIONS = [
+    {"name": "SAC default", "controller": "SAC", "seeds": [0, 1, 2, 3, 4]},
+    {"name": "PPO default", "controller": "PPO", "seeds": [0, 1, 2, 3, 4]},
+    {"name": "LQR", "controller": "LQR", "seeds": [0]},
+]
+```
+
+`name` ist der Name der Konfiguration. **Alle Seeds einer Konfiguration bekommen denselben Namen**, nur so kann ControlBench über sie mitteln. Änderst du Hyperparameter, legst du eine neue Konfiguration mit neuem Namen an, z. B. `{"name": "SAC lr 1e-3", "controller": "SAC", ...}`.
+
+**Schritt 4: Ersetze `fake_run`** durch deinen echten Run. Die Funktion bekommt die Konfiguration und den Seed und gibt zwei Dinge zurück:
+
+- `results`: die **Endergebnisse** des Runs, eine Zahl pro Feld. Sie landen in der Tabelle `runs`.
+- `metrics`: die **Verläufe**, beliebig viele Messpunkte. Sie landen in der Tabelle `metrics`.
+
+Das Grundgerüst, egal mit welcher Bibliothek du trainierst:
+
+```python
+def my_run(configuration: dict, seed: int) -> tuple[dict, list[dict]]:
+    # 1. Alle Zufallsquellen seeden, damit der Run reproduzierbar ist
+    random.seed(seed)
+    numpy.random.seed(seed)
+    torch.manual_seed(seed)
+    env.reset(seed=seed)
+
+    # 2. Controller passend zur Konfiguration bauen
+    agent = build_agent(configuration["controller"])  # deine Funktion
+
+    # 3. Trainieren und regelmäßig Messpunkte sammeln
+    metrics = []
+    start = time.perf_counter()
+    for step in range(TOTAL_STEPS):
+        agent.train_step()  # dein Trainingsschritt
+
+        if step % LOG_EVERY == 0:
+            elapsed = time.perf_counter() - start  # Sekunden seit Start: für die Achse "Rechenzeit"
+            metrics.append({"name": "success_rate", "step": step, "value": evaluate_success(agent), "time": elapsed})
+            metrics.append({"name": "episode_reward", "step": step, "value": last_episode_reward, "time": elapsed})
+
+    # 4. Endergebnisse
+    results = {
+        "reward": final_reward,            # Pflicht: höher = besser
+        "stability_time": 2.4,             # Sekunden bis stabil, oder None, wenn nie stabil
+        "recovery_time": None,             # Sekunden bis zur Erholung nach einer Störung, oder None
+        "num_steps": TOTAL_STEPS,
+        "duration": time.perf_counter() - start,  # Rechenzeit in Sekunden
     }
-    metrics = [                      # Kurven: beliebig viele Punkte -> Tabelle "metrics"
-        {"name": "success_rate", "step": 0, "value": 0.0},
-        {"name": "success_rate", "step": 500, "value": 0.12},
-        # ...
-    ]
     return results, metrics
 ```
 
-Alles andere übernimmt die Vorlage: Experiment finden oder anlegen, lokal sichern, Run und Metriken hochladen.
+Danach in `main()` den Aufruf `fake_run(configuration, seed)` durch `my_run(configuration, seed)` ersetzen. Alles andere übernimmt die Vorlage: Experiment finden oder anlegen, lokal sichern, Run und Metriken in Paketen hochladen.
 
-### Einstellungen
+Wichtig beim Ausfüllen:
+- **`success_rate` definierst du selbst.** Beim Pendel z. B. der Anteil der Evaluations-Episoden, in denen der Winkel am Ende länger als 1 s unter 0,1 rad bleibt. Wichtig ist nur, dass alle Konfigurationen dieselbe Definition verwenden.
+- **`time` ist die Zeit seit Start des Runs**, gemessen mit `time.perf_counter()`. Ohne `time` erscheint der Punkt nur in der Ansicht über die Steps.
+- **`null` bzw. `None` heißt „nicht erreicht“ oder „nicht gemessen“.** Trag nie `0` oder `-1` als Platzhalter ein, das verfälscht Mittelwerte.
+
+<details>
+<summary><b>Beispiel: Stable-Baselines3 per Callback</b> (Skizze, an dein Setup anpassen)</summary>
+
+Mit [Stable-Baselines3](https://stable-baselines3.readthedocs.io/) sammelt ein Callback die Messpunkte während `model.learn()`. `ep_info_buffer` enthält die letzten Episoden; SB3 füllt ihn, wenn das Environment in einen `Monitor` gewickelt ist, was beim Übergeben eines Environments an den Algorithmus standardmäßig passiert.
+
+```python
+import time
+
+import numpy as np
+from stable_baselines3 import PPO, SAC
+from stable_baselines3.common.callbacks import BaseCallback
+
+
+class ControlBenchCallback(BaseCallback):
+    """Sammelt alle log_every Steps den mittleren Episoden-Reward der letzten Episoden."""
+
+    def __init__(self, log_every: int):
+        super().__init__()
+        self.log_every = log_every
+        self.metrics: list[dict] = []
+        self.start = time.perf_counter()
+        self.last_logged = -log_every
+
+    def _on_step(self) -> bool:
+        # num_timesteps zählt über alle parallelen Environments, deshalb Abstand statt Modulo
+        if self.num_timesteps - self.last_logged >= self.log_every and len(self.model.ep_info_buffer) > 0:
+            rewards = [episode["r"] for episode in self.model.ep_info_buffer]
+            self.metrics.append({
+                "name": "episode_reward",
+                "step": self.num_timesteps,
+                "value": float(np.mean(rewards)),
+                "time": time.perf_counter() - self.start,
+            })
+            self.last_logged = self.num_timesteps
+        return True  # False würde das Training abbrechen
+
+
+def my_run(configuration: dict, seed: int) -> tuple[dict, list[dict]]:
+    algorithm = {"SAC": SAC, "PPO": PPO}[configuration["controller"]]
+    model = algorithm("MlpPolicy", "Pendulum-v1", seed=seed)
+    callback = ControlBenchCallback(log_every=LOG_EVERY)
+
+    start = time.perf_counter()
+    model.learn(total_timesteps=TOTAL_STEPS, callback=callback)
+
+    results = {
+        "reward": callback.metrics[-1]["value"],
+        "num_steps": TOTAL_STEPS,
+        "duration": time.perf_counter() - start,
+    }
+    return results, callback.metrics
+```
+
+</details>
+
+**Schritt 5: Starten und prüfen.** Backend starten, dann dein Skript. Im Frontend das Experiment öffnen und prüfen:
+- Stehen alle Konfigurationen in der Vergleichstabelle, jeweils mit der erwarteten Anzahl Seeds?
+- Erscheinen die Kurven über die Steps **und** über die Rechenzeit?
+
+### Einstellungen der Vorlage
 
 | Variable | Standard | Wirkung |
 |---|---|---|
 | `API_URL` | `http://127.0.0.1:8000` | Adresse des Backends |
-| `EXPERIMENT` | Name, Environment, Controller, Beschreibung | das Experiment, zu dem die Runs gehören |
-| `REUSE_EXPERIMENT` | `True` | Gibt es schon ein Experiment mit **gleichem Namen, Environment und Controller**, werden die Runs dort angehängt. Bei `False` gibt es bei jedem Start ein neues Experiment. |
+| `EXPERIMENT` | Name, Environment, Beschreibung | das Experiment, zu dem die Runs gehören |
+| `CONFIGURATIONS` | SAC und PPO mit je 5 Seeds, LQR mit einem | die verglichenen Konfigurationen, jeweils mit `name`, `controller` und `seeds` |
+| `REUSE_EXPERIMENT` | `True` | Gibt es schon ein Experiment mit **gleichem Namen und Environment**, werden die Runs dort angehängt. So kannst du später weitere Seeds oder Konfigurationen nachreichen. Bei `False` gibt es bei jedem Start ein neues Experiment. |
 | `SAVE_LOCAL_BACKUP` | `True` | Jeder Run wird **vor** dem Hochladen als JSON in `experiments/results/` gesichert. |
-| `SEEDS` | `[0, 1, 2, 3, 4]` | ein Run pro Seed |
-| `TOTAL_STEPS`, `LOG_EVERY` | `20_000`, `500` | Länge eines Runs und Abstand der Messpunkte |
+| `TOTAL_STEPS` | `20_000` | Länge eines Runs |
+| `LOG_EVERY` | `500` | Abstand der Messpunkte in Steps |
+| `METRICS_BATCH_SIZE` | `10_000` | Messpunkte pro Anfrage beim Hochladen |
 
 ### Verhalten bei Fehlern
 
 - **Backend beim Start nicht erreichbar:** Das Skript bricht sofort ab, *bevor* Rechenzeit verbraucht wird. Ohne Experiment ließen sich die Ergebnisse nicht zuordnen.
 - **Upload schlägt mitten im Lauf fehl:** Das Skript meldet den Fehler und nennt die Sicherungsdatei. Die übrigen Runs laufen weiter, und nichts geht verloren.
+
+### Große Trainings (Millionen von Steps)
+
+RL-Trainings mit 20, 100 oder 200 Mio. Steps sind normal. PPO macht dabei typischerweise viel mehr Steps als SAC, braucht pro Step aber weniger Rechenzeit. Deshalb lohnt sich der Vergleich **über die Rechenzeit**: Er zeigt, welcher Ansatz bei gleichem Aufwand besser ist.
+
+**Wie viele Messpunkte?** Nicht jeden Step loggen. Ein Diagramm ist etwa 1.000 Pixel breit, mehr Punkte sieht man nicht. Faustregel: **höchstens etwa 100.000 Messpunkte pro Run und Metrik**.
+
+| Steps pro Run | `LOG_EVERY` | Messpunkte pro Metrik |
+|---|---|---|
+| 1 Mio. | 1.000 | 1.000 |
+| 20 Mio. | 1.000 | 20.000 |
+| 200 Mio. | 2.000 bis 10.000 | 20.000 bis 100.000 |
+
+**Was ControlBench aushält**, gemessen auf einem normalen Laptop:
+
+| Szenario | Ergebnis |
+|---|---|
+| Ein Run mit 200 Mio. Steps, alle 1.000 Steps geloggt, 2 Metriken = 400.000 Messpunkte hochladen | 13 s, in Paketen à 10.000 |
+| Datenbank mit 22 solchen Runs = **4,6 Mio.** Messpunkte | 329 MB, Abfrage eines Runs per Index 0,12 s |
+| Detailseite mit diesen 22 Runs öffnen, bis das Diagramm steht | ca. 1,3 s |
+
+Möglich machen das zwei Dinge:
+- Das Frontend holt pro Run nur die angezeigte Metrik, und der Server **dünnt sie auf höchstens 1.000 Punkte aus** (`max_points`). Statt 17,9 MB kommen 89 kB an. Erster und letzter Punkt bleiben immer erhalten.
+- Die Vorlage lädt Messpunkte **in Paketen** hoch (`METRICS_BATCH_SIZE`), damit keine einzelne Anfrage in den Timeout läuft.
+
+**Eine Einschränkung:** Die Vorlage lädt einen Run erst **nach** seinem Ende hoch. Bei einem Training über mehrere Tage heißt das: Stürzt es ab, ist der Run weder in ControlBench noch in der lokalen Sicherung. Speichere bei so langen Trainings zusätzlich selbst Checkpoints. Live-Upload während des Trainings steht auf der [Roadmap](#roadmap).
 
 ### Ohne die Vorlage
 
@@ -278,16 +454,17 @@ import requests
 API = "http://127.0.0.1:8000"
 
 exp = requests.post(f"{API}/experiments", json={
-    "name": "Pendulum LQR", "environment": "Pendulum-v1", "controller": "LQR",
+    "name": "Pendel aufschwingen", "environment": "Pendulum-v1",
 }).json()
 
 run = requests.post(f"{API}/runs", json={
-    "experiment_id": exp["id"], "seed": 0, "reward": -120.4, "num_steps": 200,
+    "experiment_id": exp["id"], "controller": "LQR", "name": "LQR Q=diag(10,1)",
+    "seed": 0, "reward": -120.4, "num_steps": 200,
 }).json()
 
 requests.post(f"{API}/runs/{run['id']}/metrics", json=[
-    {"name": "angle", "step": 0, "value": 3.14},
-    {"name": "angle", "step": 1, "value": 3.02},
+    {"name": "angle", "step": 0, "value": 3.14, "time": 0.0},
+    {"name": "angle", "step": 1, "value": 3.02, "time": 0.001},
 ])
 ```
 
@@ -300,12 +477,14 @@ Die vollständige, stets aktuelle Referenz mit allen Feldern steht unter **http:
 | `POST` | `/experiments` | Experiment anlegen | `201` |
 | `GET` | `/experiments` | alle Experimente | `200` |
 | `GET` | `/experiments/{id}` | ein Experiment | `200` |
+| `DELETE` | `/experiments/{id}` | Experiment löschen, **inklusive aller Runs und Metriken** | `204` |
 | `POST` | `/runs` | Run anlegen | `201` |
 | `GET` | `/runs` | alle Runs; optional `?experiment_id=1` | `200` |
 | `GET` | `/runs/{id}` | ein Run | `200` |
 | `DELETE` | `/runs/{id}` | Run löschen, **inklusive seiner Metriken** | `204` |
 | `POST` | `/runs/{id}/metrics` | **Liste** von Messpunkten auf einmal speichern | `201` |
-| `GET` | `/runs/{id}/metrics` | Messpunkte eines Runs, sortiert nach Name und Step; optional `?name=success_rate` | `200` |
+| `GET` | `/runs/{id}/metrics` | Messpunkte eines Runs, sortiert nach Name und Step; optional `?name=success_rate` und `?max_points=1000` (siehe unten) | `200` |
+| `GET` | `/runs/{id}/metrics/names` | Namen der Metriken, die dieser Run hat | `200` |
 
 **Fehlercodes**
 
@@ -323,23 +502,21 @@ POST /experiments
 Content-Type: application/json
 
 {
-  "name": "Pendulum SAC",
+  "name": "Pendulum Controller-Vergleich",
   "environment": "Pendulum-v1",
-  "controller": "SAC",
-  "description": "Standard-Hyperparameter"
+  "description": "SAC, PPO und LQR mit Standardparametern"
 }
 ```
 
 ```json
 201 Created
-{ "id": 1, "name": "Pendulum SAC", "environment": "Pendulum-v1", "controller": "SAC", "description": "Standard-Hyperparameter" }
+{ "id": 1, "name": "Pendulum Controller-Vergleich", "environment": "Pendulum-v1", "description": "SAC, PPO und LQR mit Standardparametern" }
 ```
 
 | Feld | Typ | Pflicht |
 |---|---|---|
 | `name` | string | ja |
 | `environment` | string | ja |
-| `controller` | string | ja |
 | `description` | string | nein |
 
 **Run anlegen**
@@ -348,12 +525,14 @@ Content-Type: application/json
 POST /runs
 Content-Type: application/json
 
-{ "experiment_id": 1, "seed": 42, "reward": -150.3, "stability_time": 2.4, "num_steps": 20000, "duration": 312.5 }
+{ "experiment_id": 1, "controller": "SAC", "name": "SAC default", "seed": 42, "reward": -150.3, "stability_time": 2.4, "num_steps": 20000, "duration": 312.5 }
 ```
 
 | Feld | Typ | Pflicht | Bedeutung |
 |---|---|---|---|
 | `experiment_id` | int | ja | zu welchem Experiment der Run gehört |
+| `controller` | string | ja | Algorithmus bzw. Regler, z. B. `SAC`, `PPO`, `LQR` |
+| `name` | string | ja | Name der Konfiguration. **Alle Seeds einer Konfiguration bekommen denselben Namen**, andere Einstellungen einen anderen. |
 | `seed` | int | ja | Seed des Runs |
 | `reward` | float | ja | Endergebnis des Runs |
 | `stability_time` | float | nein | Sekunden bis zur Stabilisierung; `null` = nie stabil |
@@ -368,8 +547,8 @@ POST /runs/1/metrics
 Content-Type: application/json
 
 [
-  { "name": "success_rate", "step": 0,    "value": 0.0 },
-  { "name": "success_rate", "step": 1000, "value": 0.41 },
+  { "name": "success_rate", "step": 0,    "value": 0.0,  "time": 0.0 },
+  { "name": "success_rate", "step": 1000, "value": 0.41, "time": 31.8 },
   { "name": "episode_reward", "step": 0,  "value": -1200.5 }
 ]
 ```
@@ -379,7 +558,22 @@ Content-Type: application/json
 { "run_id": 1, "count": 3 }
 ```
 
-Schicke Messpunkte **gesammelt** als Liste, nicht einzeln. 1000 Punkte in einer Anfrage sind um ein Vielfaches schneller als 1000 einzelne Anfragen. Enthält die Liste einen ungültigen Punkt, wird **nichts** gespeichert (`422`).
+| Feld | Typ | Pflicht | Bedeutung |
+|---|---|---|---|
+| `name` | string | ja | Name der Metrik, z. B. `success_rate` |
+| `step` | int | ja | Trainings- bzw. Simulationsschritt |
+| `value` | float | ja | Messwert |
+| `time` | float | nein | **Sekunden seit Start des Runs** (Rechenzeit). Nur Punkte mit `time` erscheinen im Diagramm über die Rechenzeit. |
+
+**Messpunkte lesen, ausgedünnt**
+
+```http
+GET /runs/1/metrics?name=success_rate&max_points=1000
+```
+
+Mit `max_points` liefert der Server pro Metrik höchstens so viele Punkte, gleichmäßig über den Verlauf verteilt. Der erste und der letzte Punkt sind immer dabei. Ohne `max_points` kommen alle Punkte, bei langen Trainings können das hunderttausende sein.
+
+Schicke Messpunkte **gesammelt** als Liste, nicht einzeln, bei großen Mengen in Paketen von etwa 10.000. 1.000 Punkte in einer Anfrage sind um ein Vielfaches schneller als 1.000 einzelne Anfragen. Enthält die Liste einen ungültigen Punkt, wird **nichts** gespeichert (`422`).
 
 ## Datenmodell
 
@@ -388,11 +582,13 @@ experiments                 runs                          metrics
 ───────────                 ────                          ───────
 id            PK ◄──┐       id              PK ◄──┐       id       PK
 name                └────── experiment_id   FK    └────── run_id   FK (ON DELETE CASCADE)
-environment                 seed                          name
-controller                  reward                        step
-description   (optional)    stability_time  (optional)    value
-                            recovery_time   (optional)
-                            num_steps       (optional)    Index: (run_id, name)
+environment                 controller                    name
+description   (optional)    name                          step
+                            seed                          value
+                            reward                        time     (optional)
+                            stability_time  (optional)
+                            recovery_time   (optional)    Index: (run_id, name)
+                            num_steps       (optional)
                             duration        (optional)
 ```
 
@@ -407,6 +603,8 @@ Damit Runs verschiedener Ansätze vergleichbar bleiben, gelten diese Regeln:
 - **`duration` ist Rechenzeit** (Wall-Clock) in Sekunden, *nicht* die simulierte Zeit. Die simulierte Zeit ergibt sich aus `num_steps` × Zeitschritt des Environments.
 - **`null` heißt „nicht erreicht“ oder „nicht gemessen“**, nie `0` oder `-1`. Ein Run, der nie stabilisiert, hat `stability_time: null`. Erfundene Platzhalterzahlen würden Mittelwerte verfälschen.
 - **Jeder Run hat einen Seed.** Setze ihn in deinem Skript auch für alle Zufallsquellen (Python, NumPy, PyTorch, Environment), damit Runs reproduzierbar sind.
+- **Mehrere Seeds pro RL-Konfiguration**, mindestens 3, besser 5 oder mehr. Erst dann sind Mittelwert und Streuung aussagekräftig.
+- **Gleiche Konfiguration, gleicher Name.** Alle Seeds von „SAC default“ heißen exakt so. Änderst du Hyperparameter, bekommt die Konfiguration einen neuen Namen, z. B. „SAC lr 1e-3“.
 - **Gleiche Metrik, gleicher Name.** Verwende über alle Experimente dieselben Metriknamen, z. B. immer `success_rate` und nicht mal `success` und mal `successRate`, sonst lassen sich Kurven nicht vergleichen.
 
 ## Tests
@@ -420,11 +618,11 @@ Die Tests laufen gegen eine **eigene, temporäre Datenbank**. Deine echte `contr
 
 | Datei | Prüft |
 |---|---|
-| `tests/test_experiments.py` | Experimente anlegen, auflisten, abrufen, Pflichtfelder, 404 |
+| `tests/test_experiments.py` | Experimente anlegen, auflisten, abrufen, löschen (samt Runs und Metriken), Pflichtfelder, 404 |
 | `tests/test_runs.py` | Runs anlegen, filtern, abrufen, löschen, 404/422 |
-| `tests/test_metrics.py` | Messpunkte speichern und filtern, Sortierung, „alles oder nichts“ bei ungültigen Daten, Mitlöschen mit dem Run |
+| `tests/test_metrics.py` | Messpunkte speichern und filtern, Sortierung, „alles oder nichts“ bei ungültigen Daten, Mitlöschen mit dem Run, Ausdünnen mit `max_points`, Namen der Metriken |
 | `tests/test_cors.py` | Das Frontend darf die API aufrufen, fremde Seiten nicht |
-| `tests/test_migrations.py` | Die Alembic-Migrationen passen exakt zu `database/tables.py` |
+| `tests/test_migrations.py` | Die Alembic-Migrationen passen exakt zu `database/tables.py`, und die Datenmigration überträgt den Controller vom Experiment auf seine Runs |
 
 Nützliche Varianten:
 
@@ -474,18 +672,21 @@ SQLite kann bestehende Tabellen nur eingeschränkt ändern. Alembic ist deshalb 
 | Problem | Ursache und Lösung |
 |---|---|
 | `Activate.ps1 kann nicht geladen werden, da die Ausführung von Skripts deaktiviert ist` | Windows blockiert Skripte. Einmalig ausführen: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
-| Frontend zeigt nichts, in der Browser-Konsole steht `blocked by CORS policy` | Das Frontend läuft nicht über `http://127.0.0.1:5500` oder `http://localhost:5500`, z. B. weil die Datei direkt geöffnet wurde. |
+| Frontend meldet „Keine Verbindung zur API“ | Das Backend läuft nicht. Im Ordner `backend/` mit `uvicorn main:app --reload` starten. |
+| In der Browser-Konsole steht `blocked by CORS policy` | Das Frontend läuft nicht auf Port 5173, z. B. weil Vite auf 5174 ausgewichen ist. Den anderen Prozess auf 5173 beenden. |
 | `sqlite3.OperationalError: no such column ...` | Der Code kennt eine Spalte, die in der Datenbank fehlt: `alembic upgrade head` ausführen. |
 | `Can't locate revision identified by '...'` | Die Datenbank steht auf einer Migration, deren Datei fehlt. Meist wurde eine Migrationsdatei gelöscht. Aus Git wiederherstellen: `git restore backend/migrations/versions/<datei>` |
 | Upload-Skript meldet „keine Verbindung“ | Das Backend läuft nicht oder unter einer anderen Adresse als `API_URL`. |
+| Eine Konfiguration erscheint doppelt in der Vergleichstabelle | Die Seeds tragen nicht exakt denselben `name` (Groß-/Kleinschreibung, Leerzeichen) oder unterschiedliche `controller`. |
+| Kurven fehlen in der Ansicht „Rechenzeit“ | Die Messpunkte wurden ohne `time` hochgeladen. Über die Steps sind sie sichtbar. |
 | `ModuleNotFoundError` beim Starten | Die virtuelle Umgebung ist nicht aktiv, oder der Befehl wurde nicht im Ordner `backend/` ausgeführt. |
 
 ## Roadmap
 
 **Geplant**
-- React-Oberfläche mit Diagrammen der Lernkurven, um Controller auf einen Blick zu vergleichen
-- Experimente bearbeiten und löschen
-- `PATCH /runs/{id}`, damit Metriken schon **während** eines langen Trainings hochgeladen werden können
+- Vergleich über Experimente hinweg, z. B. SAC gegen LQR in einem Diagramm
+- Experimente bearbeiten
+- Live-Upload: Run beim Start anlegen und Metriken schon **während** eines langen Trainings hochladen (`PATCH /runs/{id}`)
 - Echte Controller-Beispiele (SAC, LQR) für Pendel und Doppelpendel
 
 **Bewusst nicht im Umfang** (ControlBench ist ein lokales Werkzeug)
