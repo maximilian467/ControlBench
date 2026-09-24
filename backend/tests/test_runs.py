@@ -77,3 +77,33 @@ def test_create_run_without_controller_or_name_returns_422(client, experiment):
 
     assert client.post("/runs", json={**base, "name": "SAC default"}).status_code == 422
     assert client.post("/runs", json={**base, "controller": "SAC"}).status_code == 422
+
+
+def test_update_run_changes_only_sent_fields(client, run):
+    res = client.patch(f"/runs/{run['id']}", json={"reward": -99.5, "stability_time": 1.2, "num_steps": 5000})
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["reward"] == -99.5
+    assert body["stability_time"] == 1.2
+    assert body["num_steps"] == 5000
+    # Nicht mitgeschickte Felder bleiben unverändert
+    assert body["name"] == run["name"]
+    assert body["seed"] == run["seed"]
+    assert client.get(f"/runs/{run['id']}").json() == body
+
+
+def test_update_run_can_reset_optional_field_to_null(client, run):
+    client.patch(f"/runs/{run['id']}", json={"stability_time": 2.0})
+    res = client.patch(f"/runs/{run['id']}", json={"stability_time": None})
+
+    assert res.status_code == 200
+    assert res.json()["stability_time"] is None
+
+
+def test_update_run_with_null_reward_returns_422(client, run):
+    assert client.patch(f"/runs/{run['id']}", json={"reward": None}).status_code == 422
+
+
+def test_update_unknown_run_returns_404(client):
+    assert client.patch("/runs/999", json={"reward": 1.0}).status_code == 404

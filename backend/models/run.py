@@ -21,6 +21,20 @@ class RunCreate(BaseModel):
     duration: float | None = None
 
 
+class RunUpdate(BaseModel):
+    """Endergebnisse eines Runs nachträglich setzen (PATCH /runs/{id}).
+
+    Damit kann ein langes Training seinen Run schon früh anlegen, Messpunkte live hochladen
+    und die Endergebnisse am Ende nachtragen. Nur mitgeschickte Felder werden geändert.
+    """
+
+    reward: float | None = None
+    stability_time: float | None = None
+    recovery_time: float | None = None
+    num_steps: int | None = None
+    duration: float | None = None
+
+
 class Run(RunCreate):
     """Run, wie ihn die API zurückgibt (mit vom Server vergebener ID)."""
 

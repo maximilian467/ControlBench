@@ -442,7 +442,9 @@ Möglich machen das zwei Dinge:
 - Das Frontend holt pro Run nur die angezeigte Metrik, und der Server **dünnt sie auf höchstens 1.000 Punkte aus** (`max_points`). Statt 17,9 MB kommen 89 kB an. Erster und letzter Punkt bleiben immer erhalten.
 - Die Vorlage lädt Messpunkte **in Paketen** hoch (`METRICS_BATCH_SIZE`), damit keine einzelne Anfrage in den Timeout läuft.
 
-**Eine Einschränkung:** Die Vorlage lädt einen Run erst **nach** seinem Ende hoch. Bei einem Training über mehrere Tage heißt das: Stürzt es ab, ist der Run weder in ControlBench noch in der lokalen Sicherung. Speichere bei so langen Trainings zusätzlich selbst Checkpoints. Live-Upload während des Trainings steht auf der [Roadmap](#roadmap).
+**Eine Einschränkung:** Die Vorlage lädt einen Run erst **nach** seinem Ende hoch. Bei einem Training über mehrere Tage heißt das: Stürzt es ab, ist der Run weder in ControlBench noch in der lokalen Sicherung. Speichere bei so langen Trainings zusätzlich selbst Checkpoints.
+
+**Live-Upload:** Wer Messpunkte schon **während** des Trainings sehen will, legt den Run früh an (z. B. nach der ersten Evaluation, mit deren Reward), schickt nach jeder Evaluation neue Messpunkte an `POST /runs/{id}/metrics` und trägt die Endergebnisse am Ende mit `PATCH /runs/{id}` nach. Ein Beispiel dafür ist `reacher_RL/reacher_rl/integrations/controlbench.py`.
 
 ### Ohne die Vorlage
 
@@ -481,6 +483,7 @@ Die vollständige, stets aktuelle Referenz mit allen Feldern steht unter **http:
 | `POST` | `/runs` | Run anlegen | `201` |
 | `GET` | `/runs` | alle Runs; optional `?experiment_id=1` | `200` |
 | `GET` | `/runs/{id}` | ein Run | `200` |
+| `PATCH` | `/runs/{id}` | Endergebnisse eines Runs nachträglich setzen (`reward`, `stability_time`, `recovery_time`, `num_steps`, `duration`); nur mitgeschickte Felder ändern sich | `200` |
 | `DELETE` | `/runs/{id}` | Run löschen, **inklusive seiner Metriken** | `204` |
 | `POST` | `/runs/{id}/metrics` | **Liste** von Messpunkten auf einmal speichern | `201` |
 | `GET` | `/runs/{id}/metrics` | Messpunkte eines Runs, sortiert nach Name und Step; optional `?name=success_rate` und `?max_points=1000` (siehe unten) | `200` |
@@ -539,6 +542,17 @@ Content-Type: application/json
 | `recovery_time` | float | nein | Sekunden bis zur Erholung nach einer Störung; `null` = keine Erholung / nicht gemessen |
 | `num_steps` | int | nein | Anzahl der Schritte |
 | `duration` | float | nein | **Rechenzeit** in Sekunden |
+
+**Endergebnisse nachtragen** (für Live-Upload: Run früh anlegen, am Ende aktualisieren)
+
+```http
+PATCH /runs/1
+Content-Type: application/json
+
+{ "reward": -120.4, "stability_time": 0.8, "num_steps": 150000, "duration": 1320.5 }
+```
+
+Nicht mitgeschickte Felder bleiben unverändert. Optionale Felder lassen sich mit `null` zurücksetzen, `reward` darf nicht `null` sein (`422`).
 
 **Messpunkte speichern**
 
@@ -619,7 +633,7 @@ Die Tests laufen gegen eine **eigene, temporäre Datenbank**. Deine echte `contr
 | Datei | Prüft |
 |---|---|
 | `tests/test_experiments.py` | Experimente anlegen, auflisten, abrufen, löschen (samt Runs und Metriken), Pflichtfelder, 404 |
-| `tests/test_runs.py` | Runs anlegen, filtern, abrufen, löschen, 404/422 |
+| `tests/test_runs.py` | Runs anlegen, filtern, abrufen, aktualisieren (PATCH), löschen, 404/422 |
 | `tests/test_metrics.py` | Messpunkte speichern und filtern, Sortierung, „alles oder nichts“ bei ungültigen Daten, Mitlöschen mit dem Run, Ausdünnen mit `max_points`, Namen der Metriken |
 | `tests/test_cors.py` | Das Frontend darf die API aufrufen, fremde Seiten nicht |
 | `tests/test_migrations.py` | Die Alembic-Migrationen passen exakt zu `database/tables.py`, und die Datenmigration überträgt den Controller vom Experiment auf seine Runs |
@@ -686,7 +700,7 @@ SQLite kann bestehende Tabellen nur eingeschränkt ändern. Alembic ist deshalb 
 **Geplant**
 - Vergleich über Experimente hinweg, z. B. SAC gegen LQR in einem Diagramm
 - Experimente bearbeiten
-- Live-Upload: Run beim Start anlegen und Metriken schon **während** eines langen Trainings hochladen (`PATCH /runs/{id}`)
+- Live-Upload in der Vorlage `example_upload.py` (die API dafür, `PATCH /runs/{id}`, gibt es bereits)
 - Echte Controller-Beispiele (SAC, LQR) für Pendel und Doppelpendel
 
 **Bewusst nicht im Umfang** (ControlBench ist ein lokales Werkzeug)
