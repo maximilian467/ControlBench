@@ -7,6 +7,8 @@ class MetricCreate(BaseModel):
     name: str  # z. B. "success_rate", "episode_reward"
     step: int
     value: float
+    # Sekunden seit Start des Runs (Rechenzeit). Optional: ohne time erscheint der Punkt nur über den Steps
+    time: float | None = None
 
 
 class Metric(MetricCreate):

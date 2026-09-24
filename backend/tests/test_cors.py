@@ -1,8 +1,8 @@
-"""Das Frontend (Port 5500) muss die API aufrufen dürfen, fremde Seiten nicht."""
+"""Das Frontend (Port 5173) muss die API aufrufen dürfen, fremde Seiten nicht."""
 
 import pytest
 
-ALLOWED_ORIGIN = "http://127.0.0.1:5500"
+ALLOWED_ORIGIN = "http://127.0.0.1:5173"
 
 
 @pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])

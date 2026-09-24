@@ -1,6 +1,8 @@
 def test_create_run(client, experiment):
     data = {
         "experiment_id": experiment["id"],
+        "controller": "SAC",
+        "name": "SAC lr 3e-4",
         "seed": 42,
         "reward": -150.3,
         "stability_time": 2.4,
@@ -12,6 +14,8 @@ def test_create_run(client, experiment):
     assert res.status_code == 201
     body = res.json()
     assert body["id"] == 1
+    assert body["controller"] == "SAC"
+    assert body["name"] == "SAC lr 3e-4"
     assert body["seed"] == 42
     assert body["stability_time"] == 2.4
     # Nicht mitgeschickte optionale Felder werden zu None (JSON: null)
@@ -19,23 +23,23 @@ def test_create_run(client, experiment):
 
 
 def test_create_run_for_unknown_experiment_returns_404(client):
-    res = client.post("/runs", json={"experiment_id": 999, "seed": 1, "reward": 0})
+    res = client.post("/runs", json={"experiment_id": 999, "controller": "SAC", "name": "SAC default", "seed": 1, "reward": 0})
 
     assert res.status_code == 404
 
 
 def test_create_run_with_invalid_seed_returns_422(client, experiment):
-    res = client.post("/runs", json={"experiment_id": experiment["id"], "seed": "abc", "reward": 0})
+    res = client.post("/runs", json={"experiment_id": experiment["id"], "controller": "SAC", "name": "SAC default", "seed": "abc", "reward": 0})
 
     assert res.status_code == 422
 
 
 def test_list_runs_can_be_filtered_by_experiment(client):
-    exp_a = client.post("/experiments", json={"name": "A", "environment": "Pendulum-v1", "controller": "SAC"}).json()
-    exp_b = client.post("/experiments", json={"name": "B", "environment": "Pendulum-v1", "controller": "LQR"}).json()
-    client.post("/runs", json={"experiment_id": exp_a["id"], "seed": 1, "reward": -100})
-    client.post("/runs", json={"experiment_id": exp_a["id"], "seed": 2, "reward": -110})
-    client.post("/runs", json={"experiment_id": exp_b["id"], "seed": 1, "reward": -90})
+    exp_a = client.post("/experiments", json={"name": "A", "environment": "Pendulum-v1"}).json()
+    exp_b = client.post("/experiments", json={"name": "B", "environment": "Pendulum-v1"}).json()
+    client.post("/runs", json={"experiment_id": exp_a["id"], "controller": "SAC", "name": "SAC default", "seed": 1, "reward": -100})
+    client.post("/runs", json={"experiment_id": exp_a["id"], "controller": "SAC", "name": "SAC default", "seed": 2, "reward": -110})
+    client.post("/runs", json={"experiment_id": exp_b["id"], "controller": "SAC", "name": "SAC default", "seed": 1, "reward": -90})
 
     all_runs = client.get("/runs").json()
     runs_of_a = client.get("/runs", params={"experiment_id": exp_a["id"]}).json()
@@ -66,3 +70,10 @@ def test_delete_run(client, run):
 
 def test_delete_unknown_run_returns_404(client):
     assert client.delete("/runs/999").status_code == 404
+
+
+def test_create_run_without_controller_or_name_returns_422(client, experiment):
+    base = {"experiment_id": experiment["id"], "seed": 1, "reward": 0}
+
+    assert client.post("/runs", json={**base, "name": "SAC default"}).status_code == 422
+    assert client.post("/runs", json={**base, "controller": "SAC"}).status_code == 422

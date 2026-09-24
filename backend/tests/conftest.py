@@ -50,7 +50,7 @@ def experiment(client):
     """Ein bereits angelegtes Experiment, für Tests, die eins voraussetzen."""
     res = client.post(
         "/experiments",
-        json={"name": "Pendulum SAC", "environment": "Pendulum-v1", "controller": "SAC"},
+        json={"name": "Pendulum SAC", "environment": "Pendulum-v1"},
     )
     return res.json()
 
@@ -58,5 +58,5 @@ def experiment(client):
 @pytest.fixture
 def run(client, experiment):
     """Ein bereits angelegter Run (gehört zu experiment)."""
-    res = client.post("/runs", json={"experiment_id": experiment["id"], "seed": 42, "reward": -150.3})
+    res = client.post("/runs", json={"experiment_id": experiment["id"], "controller": "SAC", "name": "SAC default", "seed": 42, "reward": -150.3})
     return res.json()

@@ -5,6 +5,10 @@ class RunCreate(BaseModel):
     """Daten, die der Client beim Speichern eines Runs schickt."""
 
     experiment_id: int
+    controller: str  # z. B. "SAC", "PPO", "LQR"
+    # Name der Konfiguration, z. B. "SAC lr 3e-4". Mehrere Seeds derselben Konfiguration tragen denselben Namen,
+    # so kann die Oberfläche über die Seeds mitteln
+    name: str
     seed: int
     reward: float
     # None, wenn das System im Run nie stabilisiert bzw. sich nie erholt hat

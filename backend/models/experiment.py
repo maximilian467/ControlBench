@@ -6,7 +6,6 @@ class ExperimentCreate(BaseModel):
 
     name: str
     environment: str  # z. B. "Pendulum-v1" oder "DoublePendulum"
-    controller: str  # z. B. "SAC", "LQR", "PID"
     description: str | None = None
 
 

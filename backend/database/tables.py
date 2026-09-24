@@ -10,7 +10,6 @@ class ExperimentTable(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
     environment: Mapped[str]
-    controller: Mapped[str]
     description: Mapped[str | None]
 
 
@@ -19,6 +18,9 @@ class RunTable(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     experiment_id: Mapped[int] = mapped_column(ForeignKey("experiments.id"))
+    controller: Mapped[str]  # z. B. "SAC", "PPO", "LQR"
+    # Name der Konfiguration, z. B. "SAC lr 3e-4". Runs mit gleichem Namen unterscheiden sich nur im Seed
+    name: Mapped[str]
     seed: Mapped[int]
     reward: Mapped[float]
     stability_time: Mapped[float | None]
@@ -40,3 +42,4 @@ class MetricTable(Base):
     name: Mapped[str]  # z. B. "success_rate", "episode_reward"
     step: Mapped[int]
     value: Mapped[float]
+    time: Mapped[float | None]  # Sekunden seit Start des Runs (Rechenzeit); None, wenn nicht erfasst
