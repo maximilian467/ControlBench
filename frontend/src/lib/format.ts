@@ -24,11 +24,11 @@ export function formatDuration(seconds: number): string {
   return `${decimal(1).format(seconds / 3600)} h`
 }
 
-/** Steps für Achsen, kurz wie in ML-Tools üblich: 500 -> "500", 20.000 -> "20k", 200.000.000 -> "200M". */
+/** Steps für Achsen, kurz wie in ML-Tools üblich: 500 -> "500", 2.000 -> "2k", 200.000.000 -> "200M". */
 export function formatSteps(steps: number): string {
   const short = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 })
   if (Math.abs(steps) >= 1e9) return `${short.format(steps / 1e9)}B`
   if (Math.abs(steps) >= 1e6) return `${short.format(steps / 1e6)}M`
-  if (Math.abs(steps) >= 1e4) return `${short.format(steps / 1e3)}k`
+  if (Math.abs(steps) >= 1e3) return `${short.format(steps / 1e3)}k`
   return integer.format(steps)
 }
