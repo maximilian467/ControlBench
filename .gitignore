@@ -2,9 +2,16 @@
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
 
-# Lokale Datenbank
+# Lokale Datenbank (inkl. SQLite-Nebendateien)
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Lokale Umgebungsvariablen
+.env
 
 # Lokale Sicherungen der Experiment-Skripte
 experiments/results/

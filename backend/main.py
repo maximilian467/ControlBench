@@ -5,7 +5,7 @@ from routes import experiments, metrics, runs
 
 # Die Tabellen legt Alembic an: im Ordner backend/ "alembic upgrade head" ausführen
 
-app = FastAPI(title="ControlBench API")
+app = FastAPI(title="ControlBench API", version="0.1.0")
 
 # Erlaubt dem React-Frontend (Vite, Port 5173 = andere "Origin"), die API aus dem Browser aufzurufen
 app.add_middleware(

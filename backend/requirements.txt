@@ -1,4 +1,9 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-alembic
+# Runtime dependencies of the backend.
+# Lower bound = version the project is tested with, upper bound = next release
+# that may contain breaking changes (FastAPI and Uvicorn are still 0.x).
+fastapi>=0.141.1,<0.142
+# FastAPI does not cap Starlette; a future Starlette major must not break the app silently
+starlette>=1.7,<2
+uvicorn[standard]>=0.53.0,<0.54
+sqlalchemy>=2.0.54,<2.1
+alembic>=1.20.0,<2

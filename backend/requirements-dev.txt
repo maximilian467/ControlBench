@@ -1,3 +1,4 @@
 -r requirements.txt
-pytest
-httpx2
+pytest>=9.1.1,<10
+# HTTP client behind FastAPI's TestClient (Starlette 1.x uses httpx2 instead of httpx)
+httpx2>=2.13.1,<3
