@@ -4,17 +4,20 @@
   <meta charset="UTF-8">
   <title>ControlBench</title>
   <style>
-    body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    body { font-family: sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
     label { display: block; margin-top: 0.5rem; }
     input { width: 100%; padding: 0.3rem; box-sizing: border-box; }
-    button { margin-top: 1rem; padding: 0.4rem 1rem; }
+    button { margin-top: 0.5rem; padding: 0.3rem 0.8rem; }
     pre { background: #f0f0f0; padding: 0.5rem; white-space: pre-wrap; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 0.3rem; text-align: left; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
   </style>
 </head>
 <body>
   <h1>ControlBench</h1>
 
-  <!-- HTML: nur die Struktur – Felder, Button, leere Liste -->
+  <!-- HTML: nur die Struktur. Das Verhalten steckt in app.js -->
   <h2>Neues Experiment</h2>
   <form id="experiment-form">
     <label>Name <input name="name" required></label>
@@ -30,56 +33,34 @@
   <h2>Experimente</h2>
   <ul id="experiment-list"></ul>
 
-  <!-- JavaScript: das Verhalten – reagiert auf den Button und spricht mit der API -->
-  <script>
-    const API_URL = "http://127.0.0.1:8000";
+  <!-- Wird erst sichtbar, wenn ein Experiment geöffnet wurde -->
+  <section id="experiment-detail" hidden>
+    <h2 id="detail-title"></h2>
+    <p id="detail-info"></p>
 
-    const form = document.getElementById("experiment-form");
-    const responseBox = document.getElementById("response");
-    const list = document.getElementById("experiment-list");
+    <h3>Runs</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Seed</th><th>Reward</th><th>Stability [s]</th><th>Recovery [s]</th>
+          <th>Steps</th><th>Duration [s]</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="run-table"></tbody>
+    </table>
 
-    // GET /experiments -> Liste neu aufbauen
-    async function loadExperiments() {
-      const res = await fetch(`${API_URL}/experiments`);
-      const experiments = await res.json();
+    <h3>Neuer Run</h3>
+    <form id="run-form" class="grid">
+      <label>Seed <input name="seed" type="number" step="1" required></label>
+      <label>Reward <input name="reward" type="number" step="any" required></label>
+      <label>Stability Time [s] <input name="stability_time" type="number" step="any"></label>
+      <label>Recovery Time [s] <input name="recovery_time" type="number" step="any"></label>
+      <label>Num Steps <input name="num_steps" type="number" step="1"></label>
+      <label>Duration [s] <input name="duration" type="number" step="any"></label>
+      <div><button type="submit">Run speichern</button></div>
+    </form>
+  </section>
 
-      list.innerHTML = "";
-      for (const exp of experiments) {
-        const li = document.createElement("li");
-        // textContent statt innerHTML: Eingaben werden als Text angezeigt, nie als HTML ausgeführt
-        li.textContent = `#${exp.id} ${exp.name} – ${exp.environment} / ${exp.controller}`;
-        list.appendChild(li);
-      }
-    }
-
-    // Klick auf "Create Experiment" -> POST /experiments
-    form.addEventListener("submit", async (event) => {
-      // Ohne diese Zeile würde der Browser das Formular selbst abschicken und die Seite neu laden
-      event.preventDefault();
-
-      const fields = new FormData(form);
-      const data = {
-        name: fields.get("name"),
-        environment: fields.get("environment"),
-        controller: fields.get("controller"),
-        description: fields.get("description") || null,
-      };
-
-      const res = await fetch(`${API_URL}/experiments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const body = await res.json();
-
-      responseBox.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
-      if (res.ok) {
-        form.reset();
-        loadExperiments();
-      }
-    });
-
-    loadExperiments();
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>
