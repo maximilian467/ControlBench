@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
 import { ThinkingOrb } from "thinking-orbs"
 
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 const HOLD_MS = 3000
@@ -22,6 +23,7 @@ type Phase = "idle" | "holding" | "deleting" | "hint" | "failed"
  */
 export function HoldToDelete({ onConfirm, label, target, className }: HoldToDeleteProps) {
   const [phase, setPhase] = useState<Phase>("idle")
+  const { t } = useI18n()
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Beim Verlassen der Seite keinen Timer weiterlaufen lassen
@@ -68,16 +70,16 @@ export function HoldToDelete({ onConfirm, label, target, className }: HoldToDele
 
   const text = {
     idle: label,
-    holding: "Halten …",
-    deleting: "Lösche",
-    hint: "3 s gedrückt halten",
-    failed: "Fehlgeschlagen",
+    holding: t.holdHolding,
+    deleting: t.holdDeleting,
+    hint: t.holdHint,
+    failed: t.holdFailed,
   }[phase]
 
   return (
     <button
       type="button"
-      aria-label={`${label}: ${target}. Zum Löschen 3 Sekunden gedrückt halten.`}
+      aria-label={t.holdAriaLabel(label, target)}
       aria-busy={phase === "deleting"}
       disabled={phase === "deleting"}
       onPointerDown={onPointerDown}

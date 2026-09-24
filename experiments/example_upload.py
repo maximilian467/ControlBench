@@ -33,9 +33,9 @@ import requests
 API_URL = "http://127.0.0.1:8000"
 
 EXPERIMENT = {
-    "name": "Pendulum Controller-Vergleich",
+    "name": "Pendulum controller comparison",
     "environment": "Pendulum-v1",
-    "description": "Angelegt von experiments/example_upload.py",
+    "description": "Demo data created by experiments/example_upload.py",
 }
 
 # Die Konfigurationen, die verglichen werden.

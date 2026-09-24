@@ -6,7 +6,7 @@ import { StatStrip } from "@/components/StatStrip"
 import { useAsync } from "@/hooks/useAsync"
 import { api, type Experiment, type Run } from "@/lib/api"
 import { groupConfigurations, type Configuration } from "@/lib/configurations"
-import { formatInteger, formatReward, formatSeconds } from "@/lib/format"
+import { useI18n } from "@/lib/i18n"
 
 type ExperimentSummary = {
   experiment: Experiment
@@ -38,9 +38,10 @@ function summarize(experiments: Experiment[], runs: Run[]): ExperimentSummary[] 
 const COLUMNS = "grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_4rem_minmax(0,1.5fr)_minmax(0,1.9fr)_1rem] gap-x-6"
 
 export function ExperimentsPage() {
+  const { t, f } = useI18n()
   const result = useAsync(() => Promise.all([api.experiments(), api.runs()]), "experiments-overview")
 
-  if (result.status === "loading") return <Loader label="Lade Experimente" />
+  if (result.status === "loading") return <Loader label={t.loadingExperiments} />
   if (result.status === "error") return <ErrorState error={result.error} onRetry={result.reload} />
 
   const [experiments, runs] = result.data
@@ -49,8 +50,8 @@ export function ExperimentsPage() {
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1.5">
-        <h1 className="text-2xl font-medium tracking-[-0.015em]">Experimente</h1>
-        <p className="text-muted-foreground">Reinforcement Learning und klassische Regelung im direkten Vergleich.</p>
+        <h1 className="text-2xl font-medium tracking-[-0.015em]">{t.experiments}</h1>
+        <p className="text-muted-foreground">{t.overviewSubtitle}</p>
       </header>
 
       {experiments.length === 0 ? (
@@ -59,21 +60,21 @@ export function ExperimentsPage() {
         <>
           <StatStrip
             stats={[
-              { label: "Experimente", value: formatInteger(experiments.length), numeric: true },
-              { label: "Runs", value: formatInteger(runs.length), numeric: true },
-              { label: "Controller", value: [...new Set(runs.map((r) => r.controller))].join(" · ") || "–" },
-              { label: "Environments", value: [...new Set(experiments.map((e) => e.environment))].join(" · ") },
+              { label: t.experiments, value: f.integer(experiments.length), numeric: true },
+              { label: t.runs, value: f.integer(runs.length), numeric: true },
+              { label: t.controllers, value: [...new Set(runs.map((r) => r.controller))].join(" · ") || "–" },
+              { label: t.environments, value: [...new Set(experiments.map((e) => e.environment))].join(" · ") },
             ]}
           />
 
           <section className="overflow-hidden rounded-lg border bg-card">
             <div className={`${COLUMNS} border-b px-5 py-2.5 text-xs text-faint-foreground`}>
-              <span>Experiment</span>
-              <span>Environment</span>
-              <span>Controller</span>
-              <span className="text-right">Runs</span>
-              <span>Beste Konfiguration</span>
-              <span>Letzter Run</span>
+              <span>{t.experiment}</span>
+              <span>{t.environment}</span>
+              <span>{t.controllers}</span>
+              <span className="text-right">{t.runs}</span>
+              <span>{t.bestConfiguration}</span>
+              <span>{t.latestRun}</span>
               <span />
             </div>
             <ul>
@@ -92,6 +93,7 @@ export function ExperimentsPage() {
 
 function ExperimentRow({ summary }: { summary: ExperimentSummary }) {
   const { experiment, runCount, controllers, best, lastRun } = summary
+  const { t, f } = useI18n()
 
   return (
     <Link
@@ -114,7 +116,9 @@ function ExperimentRow({ summary }: { summary: ExperimentSummary }) {
       ) : (
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="truncate">{best.name}</span>
-          <span className="font-mono text-xs text-muted-foreground tabular-nums">Ø {formatReward(best.rewardMean)}</span>
+          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+            {t.meanShort} {f.reward(best.rewardMean)}
+          </span>
         </span>
       )}
       <LastRun run={lastRun} />
@@ -126,7 +130,8 @@ function ExperimentRow({ summary }: { summary: ExperimentSummary }) {
 }
 
 function LastRun({ run }: { run: Run | null }) {
-  if (run === null) return <span className="text-faint-foreground">Noch keine Runs</span>
+  const { t, f } = useI18n()
+  if (run === null) return <span className="text-faint-foreground">{t.noRunsYet}</span>
 
   const stable = run.stability_time !== null
   return (
@@ -135,10 +140,10 @@ function LastRun({ run }: { run: Run | null }) {
         {run.name} <span className="font-mono text-faint-foreground">· seed {run.seed}</span>
       </span>
       <span className="flex items-center gap-3 font-mono text-xs whitespace-nowrap tabular-nums">
-        <span>{formatReward(run.reward)}</span>
+        <span>{f.reward(run.reward)}</span>
         <span className={`flex items-center gap-1.5 ${stable ? "text-muted-foreground" : "text-faint-foreground"}`}>
           <span className={`size-1.5 rounded-full ${stable ? "bg-success" : "bg-faint-foreground/50"}`} />
-          {stable ? `stabil ${formatSeconds(run.stability_time)}` : "nicht stabil"}
+          {stable ? t.stableAfter(f.seconds(run.stability_time)) : t.notStable}
         </span>
       </span>
     </div>
@@ -146,13 +151,11 @@ function LastRun({ run }: { run: Run | null }) {
 }
 
 function EmptyState() {
+  const { t } = useI18n()
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-dashed px-6 py-12">
-      <p className="font-medium">Noch keine Experimente</p>
-      <p className="max-w-xl text-muted-foreground">
-        Experimente und Runs entstehen automatisch, sobald ein Trainings- oder Regelungsskript seine Ergebnisse an die
-        API schickt. Zum Ausprobieren im Projektordner:
-      </p>
+      <p className="font-medium">{t.noExperimentsYet}</p>
+      <p className="max-w-xl text-muted-foreground">{t.emptyStateText}</p>
       <code className="self-start rounded-md border bg-card px-3 py-2 font-mono text-[13px]">
         python experiments/example_upload.py
       </code>

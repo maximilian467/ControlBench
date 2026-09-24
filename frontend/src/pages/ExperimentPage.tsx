@@ -6,12 +6,15 @@ import { ErrorState } from "@/components/ErrorState"
 import { HoldToDelete } from "@/components/HoldToDelete"
 import { Loader } from "@/components/Loader"
 import { MetricChart, type ChartSeries } from "@/components/MetricChart"
+import { Segmented } from "@/components/Segmented"
 import { StatStrip } from "@/components/StatStrip"
 import { useAsync } from "@/hooks/useAsync"
 import { useMetricNames, useRunMetrics } from "@/hooks/useRunMetrics"
 import { api, type Run } from "@/lib/api"
 import { aggregateCurves, groupConfigurations, mean, type Configuration } from "@/lib/configurations"
-import { formatDuration, formatInteger, formatReward, formatSeconds, formatSteps } from "@/lib/format"
+import type { Formatters } from "@/lib/format"
+import { useI18n } from "@/lib/i18n"
+import type { Messages } from "@/lib/messages"
 import { cn } from "@/lib/utils"
 
 const MAX_SELECTED = 5
@@ -22,9 +25,10 @@ const SERIES_COLORS = ["var(--chart-1)", "var(--chart-3)", "var(--chart-4)", "va
 export function ExperimentPage() {
   const id = Number(useParams().id)
   const navigate = useNavigate()
+  const { t } = useI18n()
   const result = useAsync(() => Promise.all([api.experiment(id), api.runs(id)]), `experiment-${id}`)
 
-  if (result.status === "loading") return <Loader label="Lade Experiment" />
+  if (result.status === "loading") return <Loader label={t.loadingExperiment} />
   if (result.status === "error") return <ErrorState error={result.error} onRetry={result.reload} />
 
   const [experiment, runs] = result.data
@@ -43,7 +47,7 @@ export function ExperimentPage() {
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4">
         <Link to="/" className="self-start text-xs text-faint-foreground transition-colors hover:text-foreground">
-          ← Experimente
+          ← {t.experiments}
         </Link>
         <header className="flex items-start justify-between gap-6">
           <div className="flex min-w-0 flex-col gap-1.5">
@@ -52,9 +56,9 @@ export function ExperimentPage() {
             {experiment.description && <p className="text-muted-foreground">{experiment.description}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            {result.refreshing && <ThinkingOrb state="breathing" size={20} theme="dark" aria-label="Aktualisiere" />}
+            {result.refreshing && <ThinkingOrb state="breathing" size={20} theme="dark" aria-label={t.refreshing} />}
             <HoldToDelete
-              label="Experiment löschen"
+              label={t.deleteExperiment}
               target={experiment.name}
               onConfirm={deleteExperiment}
               className="h-8 w-40"
@@ -65,7 +69,7 @@ export function ExperimentPage() {
 
       {runs.length === 0 ? (
         <section className="rounded-lg border border-dashed px-6 py-12 text-muted-foreground">
-          Dieses Experiment hat noch keine Runs.
+          {t.experimentHasNoRuns}
         </section>
       ) : (
         // key: Nach dem Löschen eines Runs bleibt die Auswahl erhalten, bei einem anderen Experiment nicht
@@ -77,6 +81,7 @@ export function ExperimentPage() {
 
 /** Alles, was Runs braucht. Eigene Komponente, damit die Auswahl mit den geladenen Runs starten kann. */
 function ExperimentContent({ runs, onDeleteRun }: { runs: Run[]; onDeleteRun: (runId: number) => Promise<void> }) {
+  const { t, f } = useI18n()
   const configurations = groupConfigurations(runs)
   const best = configurations[0]
 
@@ -107,13 +112,13 @@ function ExperimentContent({ runs, onDeleteRun }: { runs: Run[]; onDeleteRun: (r
     <>
       <StatStrip
         stats={[
-          { label: "Konfigurationen", value: formatInteger(configurations.length), numeric: true },
-          { label: "Runs", value: formatInteger(runs.length), numeric: true },
-          { label: "Controller", value: [...new Set(runs.map((run) => run.controller))].join(" · ") },
-          { label: "Stabil", value: `${stable} / ${runs.length}`, numeric: true },
+          { label: t.configurations, value: f.integer(configurations.length), numeric: true },
+          { label: t.runs, value: f.integer(runs.length), numeric: true },
+          { label: t.controllers, value: [...new Set(runs.map((run) => run.controller))].join(" · ") },
+          { label: t.stable, value: `${stable} / ${runs.length}`, numeric: true },
           {
-            label: "Ø Rechenzeit",
-            value: durations.length ? formatSeconds(mean(durations)) : "–",
+            label: t.avgWallClock,
+            value: durations.length ? f.seconds(mean(durations)) : "–",
             numeric: true,
           },
         ]}
@@ -139,21 +144,22 @@ function ExperimentContent({ runs, onDeleteRun }: { runs: Run[]; onDeleteRun: (r
   )
 }
 
-function formatMeanStd(configuration: Configuration): string {
-  const meanText = formatReward(configuration.rewardMean)
-  return configuration.rewardStd === null ? meanText : `${meanText} ± ${formatReward(configuration.rewardStd)}`
+function formatMeanStd(configuration: Configuration, f: Formatters): string {
+  const meanText = f.reward(configuration.rewardMean)
+  return configuration.rewardStd === null ? meanText : `${meanText} ± ${f.reward(configuration.rewardStd)}`
 }
 
 /** Hebt die Konfiguration mit dem höchsten mittleren Reward hervor. */
 function BestConfigurationCard({ configuration, alone }: { configuration: Configuration; alone: boolean }) {
+  const { t, f } = useI18n()
   const n = configuration.runs.length
   const facts = [
     ["Controller", configuration.controller],
-    ["Seeds", String(n)],
-    ["Spannweite", n > 1 ? `${formatReward(configuration.rewardMin)} … ${formatReward(configuration.rewardMax)}` : "–"],
-    ["Stabil", `${configuration.stableCount} / ${n}`],
-    ["Ø stabil nach", formatSeconds(configuration.stabilityMean)],
-    ["Ø Rechenzeit", formatSeconds(configuration.durationMean)],
+    [t.seeds, String(n)],
+    [t.range, n > 1 ? `${f.reward(configuration.rewardMin)} … ${f.reward(configuration.rewardMax)}` : "–"],
+    [t.stable, `${configuration.stableCount} / ${n}`],
+    [t.avgTimeToStable, f.seconds(configuration.stabilityMean)],
+    [t.avgWallClock, f.seconds(configuration.durationMean)],
   ]
 
   return (
@@ -161,11 +167,11 @@ function BestConfigurationCard({ configuration, alone }: { configuration: Config
       <div className="flex flex-col gap-1">
         <span className="flex items-center gap-2 text-xs text-accent-signal">
           <span className="size-1.5 rounded-full bg-accent-signal" />
-          {alone ? "Konfiguration" : "Beste Konfiguration"}
+          {alone ? t.configuration : t.bestConfiguration}
         </span>
         <span className="text-lg font-medium">{configuration.name}</span>
         <span className="font-mono text-sm text-muted-foreground tabular-nums">
-          Reward Ø {formatMeanStd(configuration)}
+          {t.rewardMean} {formatMeanStd(configuration, f)}
         </span>
       </div>
       <dl className="flex flex-wrap gap-x-10 gap-y-2">
@@ -189,9 +195,8 @@ const METRIC_LABELS: Record<string, string> = {
   episode_reward: "Episode Reward",
 }
 
-const valueFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 })
-
 function MetricsPanel({ configurations, colors }: { configurations: Configuration[]; colors: Map<string, string> }) {
+  const { t, f } = useI18n()
   const runIds = configurations.flatMap((c) => c.runs.map((run) => run.id))
   const [metricName, setMetricName] = useState("success_rate")
   const [axis, setAxis] = useState<Axis>("steps")
@@ -231,7 +236,7 @@ function MetricsPanel({ configurations, colors }: { configurations: Configuratio
             <select
               value={activeName}
               onChange={(event) => setMetricName(event.target.value)}
-              aria-label="Metrik"
+              aria-label={t.metric}
               className="h-7 rounded-md border border-input bg-transparent px-2 text-sm font-medium outline-none focus-visible:border-ring"
             >
               {names.map((name) => (
@@ -242,44 +247,42 @@ function MetricsPanel({ configurations, colors }: { configurations: Configuratio
             </select>
           ) : (
             <h2 className="text-sm font-medium">
-              {activeName === null ? "Metriken" : (METRIC_LABELS[activeName] ?? activeName)}
+              {activeName === null ? t.metrics : (METRIC_LABELS[activeName] ?? activeName)}
             </h2>
           )}
-          <span className="text-xs text-faint-foreground">Mittelwert über die Seeds, Band: Minimum bis Maximum</span>
+          <span className="text-xs text-faint-foreground">{t.chartCaption}</span>
           {loading && series.length > 0 && (
-            <ThinkingOrb state="breathing" size={20} theme="dark" aria-label="Lade Metriken" />
+            <ThinkingOrb state="breathing" size={20} theme="dark" aria-label={t.loadingMetrics} />
           )}
         </div>
         <Segmented
           value={axis}
           onChange={setAxis}
           options={[
-            { value: "steps", label: "Steps" },
-            { value: "time", label: "Rechenzeit" },
+            { value: "steps", label: t.steps },
+            { value: "time", label: t.wallClock },
           ]}
         />
       </header>
 
       <div className="px-5 pt-4 pb-3">
         {configurations.length === 0 ? (
-          <ChartMessage>Konfigurationen in der Tabelle unten auswählen, um ihre Kurven zu vergleichen.</ChartMessage>
+          <ChartMessage>{t.selectConfigurationsHint}</ChartMessage>
         ) : series.length === 0 && loading ? (
           <div className="flex h-80 flex-col items-center justify-center gap-3">
-            <ThinkingOrb state="composing" size={32} theme="dark" aria-label="Lade Metriken" />
-            <span className="font-mono text-xs text-faint-foreground">Lade Metriken</span>
+            <ThinkingOrb state="composing" size={32} theme="dark" aria-label={t.loadingMetrics} />
+            <span className="font-mono text-xs text-faint-foreground">{t.loadingMetrics}</span>
           </div>
         ) : series.length === 0 ? (
           <ChartMessage>
-            {axis === "time"
-              ? "Die ausgewählten Konfigurationen haben keine Zeitstempel. Über die Steps sind sie sichtbar, falls sie Messpunkte haben."
-              : "Die ausgewählten Konfigurationen haben keine Messpunkte."}
+            {axis === "time" ? t.noTimestamps : t.noDataPoints}
           </ChartMessage>
         ) : (
           <MetricChart
             series={series}
             yDomain={isRate ? [0, 1] : undefined}
-            formatX={(v) => (axis === "steps" ? formatSteps(v) : formatDuration(v))}
-            formatY={(v) => (isRate ? `${Math.round(v * 100)} %` : valueFormat.format(v))}
+            formatX={(v) => (axis === "steps" ? f.steps(v) : f.duration(v))}
+            formatY={(v) => (isRate ? f.percent(v) : f.value(v))}
           />
         )}
         {series.length > 0 && (
@@ -294,7 +297,7 @@ function MetricsPanel({ configurations, colors }: { configurations: Configuratio
         )}
         {withoutData.length > 0 && series.length > 0 && (
           <p className="mt-2 text-xs text-faint-foreground">
-            Ohne {axis === "time" ? "Zeitstempel" : "Messpunkte"}: {withoutData.join(", ")}.
+            {axis === "time" ? t.withoutTimestamps : t.withoutDataPoints}: {withoutData.join(", ")}.
           </p>
         )}
       </div>
@@ -304,36 +307,6 @@ function MetricsPanel({ configurations, colors }: { configurations: Configuratio
 
 function ChartMessage({ children }: { children: ReactNode }) {
   return <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">{children}</div>
-}
-
-function Segmented<T extends string>({
-  value,
-  onChange,
-  options,
-}: {
-  value: T
-  onChange: (value: T) => void
-  options: { value: T; label: string }[]
-}) {
-  return (
-    <div role="radiogroup" className="inline-flex rounded-md border p-0.5">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={value === option.value}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            "h-6 rounded-[4px] px-2.5 text-xs transition-colors",
-            value === option.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  )
 }
 
 // ---------- Vergleich der Konfigurationen ----------
@@ -347,26 +320,27 @@ type ConfigurationTableProps = {
 }
 
 function ConfigurationTable({ configurations, bestKey, selected, colors, onToggle }: ConfigurationTableProps) {
+  const { t, f } = useI18n()
   const means = configurations.map((c) => c.rewardMean)
   const [min, max] = [Math.min(...means), Math.max(...means)]
 
   return (
     <section className="overflow-hidden rounded-lg border bg-card">
-      <h2 className="border-b px-5 py-3 text-sm font-medium">Vergleich der Konfigurationen</h2>
+      <h2 className="border-b px-5 py-3 text-sm font-medium">{t.configurationComparison}</h2>
       <table className="w-full text-sm">
         <thead className="text-xs text-faint-foreground">
           <tr className="border-b">
             <th className="w-12 py-2.5 pl-5 text-left font-normal">
-              <span className="sr-only">Im Diagramm zeigen</span>
+              <span className="sr-only">{t.showInChart}</span>
             </th>
-            <th className="py-2.5 text-left font-normal">Konfiguration</th>
+            <th className="py-2.5 text-left font-normal">{t.configuration}</th>
             <th className="py-2.5 text-left font-normal">Controller</th>
-            <th className="py-2.5 pr-6 text-right font-normal">Seeds</th>
-            <th className="py-2.5 pr-6 text-right font-normal">Reward Ø ± Std</th>
-            <th className="py-2.5 pr-6 text-right font-normal">Spannweite</th>
-            <th className="py-2.5 pr-6 text-right font-normal">Stabil</th>
-            <th className="py-2.5 pr-6 text-right font-normal">Ø stabil nach</th>
-            <th className="py-2.5 pr-5 text-right font-normal">Ø Rechenzeit</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.seeds}</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.rewardMeanStd}</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.range}</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.stable}</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.avgTimeToStable}</th>
+            <th className="py-2.5 pr-5 text-right font-normal">{t.avgWallClockTime}</th>
           </tr>
         </thead>
         <tbody>
@@ -380,7 +354,7 @@ function ConfigurationTable({ configurations, bestKey, selected, colors, onToggl
                   <SeriesCheckbox
                     checked={isSelected}
                     color={isSelected ? colors.get(configuration.key) : undefined}
-                    label={`${configuration.name} im Diagramm zeigen`}
+                    label={t.showNameInChart(configuration.name)}
                     onChange={() => onToggle(configuration.key)}
                   />
                 </td>
@@ -394,20 +368,20 @@ function ConfigurationTable({ configurations, bestKey, selected, colors, onToggl
                 <td className="pr-6 text-right font-mono text-xs tabular-nums">
                   <span className="inline-flex items-center justify-end gap-3">
                     <RewardBar share={max === min ? 1 : (configuration.rewardMean - min) / (max - min)} best={isBest} />
-                    {formatMeanStd(configuration)}
+                    {formatMeanStd(configuration, f)}
                   </span>
                 </td>
                 <td className="pr-6 text-right font-mono text-xs text-muted-foreground tabular-nums">
-                  {n > 1 ? `${formatReward(configuration.rewardMin)} … ${formatReward(configuration.rewardMax)}` : "–"}
+                  {n > 1 ? `${f.reward(configuration.rewardMin)} … ${f.reward(configuration.rewardMax)}` : "–"}
                 </td>
                 <td className="pr-6 text-right font-mono text-xs tabular-nums">
                   {configuration.stableCount} / {n}
                 </td>
                 <td className="pr-6 text-right font-mono text-xs tabular-nums">
-                  {formatSeconds(configuration.stabilityMean)}
+                  {f.seconds(configuration.stabilityMean)}
                 </td>
                 <td className="pr-5 text-right font-mono text-xs tabular-nums">
-                  {formatSeconds(configuration.durationMean)}
+                  {f.seconds(configuration.durationMean)}
                 </td>
               </tr>
             )
@@ -458,14 +432,18 @@ function RewardBar({ share, best }: { share: number; best: boolean }) {
 
 type SortKey = "name" | "seed" | "reward" | "stability_time" | "num_steps" | "duration"
 
-const RUN_COLUMNS: { key: SortKey; label: string; numeric: boolean; format: (run: Run) => string }[] = [
-  { key: "name", label: "Konfiguration", numeric: false, format: (run) => run.name },
-  { key: "seed", label: "Seed", numeric: true, format: (run) => String(run.seed) },
-  { key: "reward", label: "Reward", numeric: true, format: (run) => formatReward(run.reward) },
-  { key: "stability_time", label: "Stabil nach", numeric: true, format: (run) => formatSeconds(run.stability_time) },
-  { key: "num_steps", label: "Steps", numeric: true, format: (run) => formatInteger(run.num_steps) },
-  { key: "duration", label: "Rechenzeit", numeric: true, format: (run) => formatSeconds(run.duration) },
-]
+type RunColumn = { key: SortKey; label: string; numeric: boolean; format: (run: Run) => string }
+
+function runColumns(t: Messages, f: Formatters): RunColumn[] {
+  return [
+    { key: "name", label: t.configuration, numeric: false, format: (run) => run.name },
+    { key: "seed", label: t.seed, numeric: true, format: (run) => String(run.seed) },
+    { key: "reward", label: t.reward, numeric: true, format: (run) => f.reward(run.reward) },
+    { key: "stability_time", label: t.stableAfterColumn, numeric: true, format: (run) => f.seconds(run.stability_time) },
+    { key: "num_steps", label: t.steps, numeric: true, format: (run) => f.integer(run.num_steps) },
+    { key: "duration", label: t.wallClockColumn, numeric: true, format: (run) => f.seconds(run.duration) },
+  ]
+}
 
 function sortRuns(runs: Run[], key: SortKey, direction: 1 | -1): Run[] {
   return [...runs].sort((a, b) => {
@@ -481,6 +459,8 @@ function sortRuns(runs: Run[], key: SortKey, direction: 1 | -1): Run[] {
 
 function RunTable({ runs, onDelete }: { runs: Run[]; onDelete: (runId: number) => Promise<void> }) {
   const [sort, setSort] = useState<{ key: SortKey; direction: 1 | -1 }>({ key: "name", direction: 1 })
+  const { t, f } = useI18n()
+  const columns = runColumns(t, f)
 
   function toggleSort(key: SortKey) {
     // Gleiche Spalte: Richtung umdrehen. Neue Spalte: Reward absteigend, sonst aufsteigend
@@ -494,13 +474,13 @@ function RunTable({ runs, onDelete }: { runs: Run[]; onDelete: (runId: number) =
   return (
     <section className="overflow-hidden rounded-lg border bg-card">
       <h2 className="border-b px-5 py-3 text-sm font-medium">
-        Einzelne Runs <span className="font-normal text-faint-foreground">{runs.length}</span>
+        {t.individualRuns} <span className="font-normal text-faint-foreground">{runs.length}</span>
       </h2>
       <table className="w-full text-sm">
         <thead className="text-xs text-faint-foreground">
           <tr className="border-b">
-            <th className="w-20 py-2.5 pl-5 text-left font-normal">Run</th>
-            {RUN_COLUMNS.map((column) => (
+            <th className="w-20 py-2.5 pl-5 text-left font-normal">{t.run}</th>
+            {columns.map((column) => (
               <th
                 key={column.key}
                 aria-sort={sort.key === column.key ? (sort.direction === 1 ? "ascending" : "descending") : undefined}
@@ -528,7 +508,7 @@ function RunTable({ runs, onDelete }: { runs: Run[]; onDelete: (runId: number) =
           {sortRuns(runs, sort.key, sort.direction).map((run) => (
             <tr key={run.id} className="group border-b transition-colors last:border-b-0 hover:bg-muted/60">
               <td className="py-2.5 pl-5 font-mono text-xs text-muted-foreground">#{run.id}</td>
-              {RUN_COLUMNS.map((column) => (
+              {columns.map((column) => (
                 <td
                   key={column.key}
                   className={cn(
@@ -541,7 +521,7 @@ function RunTable({ runs, onDelete }: { runs: Run[]; onDelete: (runId: number) =
               ))}
               <td className="pr-4 text-right">
                 <HoldToDelete
-                  label="Löschen"
+                  label={t.delete}
                   target={`Run ${run.id}`}
                   onConfirm={() => onDelete(run.id)}
                   className="w-36 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"

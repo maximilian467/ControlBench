@@ -1,0 +1,163 @@
+// Alle Texte der Oberfläche, pro Sprache. Englisch ist die Referenz: Das deutsche Objekt hat den
+// Typ Messages, fehlt dort ein Schlüssel oder passt eine Funktion nicht, schlägt die Typprüfung fehl.
+
+const en = {
+  // Allgemein
+  loadingExperiments: "Loading experiments",
+  loadingExperiment: "Loading experiment",
+  loadingMetrics: "Loading metrics",
+  refreshing: "Refreshing",
+  language: "Language",
+
+  // Fehler
+  noConnection: "No connection to the API",
+  apiError: (status: number) => `The API responded with error ${status}`,
+  // {api}, {folder} und {command} werden in Monospace eingesetzt
+  offlineHint: "No server is responding at {api}. Start the backend in the {folder} folder with {command}.",
+  backToOverview: "Back to overview",
+  retry: "Try again",
+
+  // Übersicht
+  experiments: "Experiments",
+  overviewSubtitle: "Reinforcement learning and classical control, compared side by side.",
+  runs: "Runs",
+  controllers: "Controllers",
+  environments: "Environments",
+  experiment: "Experiment",
+  environment: "Environment",
+  bestConfiguration: "Best configuration",
+  latestRun: "Latest run",
+  meanShort: "avg",
+  noRunsYet: "No runs yet",
+  stableAfter: (time: string) => `stable ${time}`,
+  notStable: "not stable",
+  noExperimentsYet: "No experiments yet",
+  emptyStateText:
+    "Experiments and runs are created automatically as soon as a training or control script sends its results to the API. To try it out, run this in the project folder:",
+
+  // Experiment
+  deleteExperiment: "Delete experiment",
+  experimentHasNoRuns: "This experiment has no runs yet.",
+  configurations: "Configurations",
+  configuration: "Configuration",
+  stable: "Stable",
+  avgWallClock: "Avg. wall-clock",
+  seeds: "Seeds",
+  range: "Range",
+  avgTimeToStable: "Avg. time to stable",
+  rewardMean: "Reward avg",
+
+  // Diagramm
+  metric: "Metric",
+  metrics: "Metrics",
+  chartCaption: "Mean over seeds, band: min to max",
+  steps: "Steps",
+  wallClock: "Wall-clock time",
+  selectConfigurationsHint: "Select configurations in the table below to compare their curves.",
+  noTimestamps:
+    "The selected configurations have no timestamps. They are visible over steps if they have data points.",
+  noDataPoints: "The selected configurations have no data points.",
+  withoutTimestamps: "Without timestamps",
+  withoutDataPoints: "Without data points",
+
+  // Vergleichstabelle
+  configurationComparison: "Configuration comparison",
+  showInChart: "Show in chart",
+  showNameInChart: (name: string) => `Show ${name} in chart`,
+  rewardMeanStd: "Reward avg ± std",
+  avgWallClockTime: "Avg. wall-clock time",
+
+  // Einzelne Runs
+  individualRuns: "Individual runs",
+  run: "Run",
+  seed: "Seed",
+  reward: "Reward",
+  stableAfterColumn: "Stable after",
+  wallClockColumn: "Wall-clock time",
+  delete: "Delete",
+
+  // Löschen durch Halten
+  holdHolding: "Hold …",
+  holdDeleting: "Deleting",
+  holdHint: "Hold for 3 s",
+  holdFailed: "Failed",
+  holdAriaLabel: (label: string, target: string) => `${label}: ${target}. Hold for 3 seconds to delete.`,
+}
+
+export type Messages = typeof en
+
+const de: Messages = {
+  loadingExperiments: "Lade Experimente",
+  loadingExperiment: "Lade Experiment",
+  loadingMetrics: "Lade Metriken",
+  refreshing: "Aktualisiere",
+  language: "Sprache",
+
+  noConnection: "Keine Verbindung zur API",
+  apiError: (status) => `Die API hat mit Fehler ${status} geantwortet`,
+  offlineHint: "Unter {api} antwortet kein Server. Starte das Backend im Ordner {folder} mit {command}.",
+  backToOverview: "Zur Übersicht",
+  retry: "Erneut versuchen",
+
+  experiments: "Experimente",
+  overviewSubtitle: "Reinforcement Learning und klassische Regelung im direkten Vergleich.",
+  runs: "Runs",
+  controllers: "Controller",
+  environments: "Environments",
+  experiment: "Experiment",
+  environment: "Environment",
+  bestConfiguration: "Beste Konfiguration",
+  latestRun: "Letzter Run",
+  meanShort: "Ø",
+  noRunsYet: "Noch keine Runs",
+  stableAfter: (time) => `stabil ${time}`,
+  notStable: "nicht stabil",
+  noExperimentsYet: "Noch keine Experimente",
+  emptyStateText:
+    "Experimente und Runs entstehen automatisch, sobald ein Trainings- oder Regelungsskript seine Ergebnisse an die API schickt. Zum Ausprobieren im Projektordner:",
+
+  deleteExperiment: "Experiment löschen",
+  experimentHasNoRuns: "Dieses Experiment hat noch keine Runs.",
+  configurations: "Konfigurationen",
+  configuration: "Konfiguration",
+  stable: "Stabil",
+  avgWallClock: "Ø Rechenzeit",
+  seeds: "Seeds",
+  range: "Spannweite",
+  avgTimeToStable: "Ø stabil nach",
+  rewardMean: "Reward Ø",
+
+  metric: "Metrik",
+  metrics: "Metriken",
+  chartCaption: "Mittelwert über die Seeds, Band: Minimum bis Maximum",
+  steps: "Steps",
+  wallClock: "Rechenzeit",
+  selectConfigurationsHint: "Konfigurationen in der Tabelle unten auswählen, um ihre Kurven zu vergleichen.",
+  noTimestamps:
+    "Die ausgewählten Konfigurationen haben keine Zeitstempel. Über die Steps sind sie sichtbar, falls sie Messpunkte haben.",
+  noDataPoints: "Die ausgewählten Konfigurationen haben keine Messpunkte.",
+  withoutTimestamps: "Ohne Zeitstempel",
+  withoutDataPoints: "Ohne Messpunkte",
+
+  configurationComparison: "Vergleich der Konfigurationen",
+  showInChart: "Im Diagramm zeigen",
+  showNameInChart: (name) => `${name} im Diagramm zeigen`,
+  rewardMeanStd: "Reward Ø ± Std",
+  avgWallClockTime: "Ø Rechenzeit",
+
+  individualRuns: "Einzelne Runs",
+  run: "Run",
+  seed: "Seed",
+  reward: "Reward",
+  stableAfterColumn: "Stabil nach",
+  wallClockColumn: "Rechenzeit",
+  delete: "Löschen",
+
+  holdHolding: "Halten …",
+  holdDeleting: "Lösche",
+  holdHint: "3 s gedrückt halten",
+  holdFailed: "Fehlgeschlagen",
+  holdAriaLabel: (label, target) => `${label}: ${target}. Zum Löschen 3 Sekunden gedrückt halten.`,
+}
+
+export const MESSAGES = { en, de }
