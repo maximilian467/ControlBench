@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>ControlBench</title>
+  <style>
+    body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    label { display: block; margin-top: 0.5rem; }
+    input { width: 100%; padding: 0.3rem; box-sizing: border-box; }
+    button { margin-top: 1rem; padding: 0.4rem 1rem; }
+    pre { background: #f0f0f0; padding: 0.5rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>ControlBench</h1>
+
+  <!-- HTML: nur die Struktur – Felder, Button, leere Liste -->
+  <h2>Neues Experiment</h2>
+  <form id="experiment-form">
+    <label>Name <input name="name" required></label>
+    <label>Environment <input name="environment" placeholder="Pendulum-v1" required></label>
+    <label>Controller <input name="controller" placeholder="SAC, LQR, PID ..." required></label>
+    <label>Beschreibung <input name="description"></label>
+    <button type="submit">Create Experiment</button>
+  </form>
+
+  <h3>Letzte Antwort der API</h3>
+  <pre id="response">–</pre>
+
+  <h2>Experimente</h2>
+  <ul id="experiment-list"></ul>
+
+  <!-- JavaScript: das Verhalten – reagiert auf den Button und spricht mit der API -->
+  <script>
+    const API_URL = "http://127.0.0.1:8000";
+
+    const form = document.getElementById("experiment-form");
+    const responseBox = document.getElementById("response");
+    const list = document.getElementById("experiment-list");
+
+    // GET /experiments -> Liste neu aufbauen
+    async function loadExperiments() {
+      const res = await fetch(`${API_URL}/experiments`);
+      const experiments = await res.json();
+
+      list.innerHTML = "";
+      for (const exp of experiments) {
+        const li = document.createElement("li");
+        // textContent statt innerHTML: Eingaben werden als Text angezeigt, nie als HTML ausgeführt
+        li.textContent = `#${exp.id} ${exp.name} – ${exp.environment} / ${exp.controller}`;
+        list.appendChild(li);
+      }
+    }
+
+    // Klick auf "Create Experiment" -> POST /experiments
+    form.addEventListener("submit", async (event) => {
+      // Ohne diese Zeile würde der Browser das Formular selbst abschicken und die Seite neu laden
+      event.preventDefault();
+
+      const fields = new FormData(form);
+      const data = {
+        name: fields.get("name"),
+        environment: fields.get("environment"),
+        controller: fields.get("controller"),
+        description: fields.get("description") || null,
+      };
+
+      const res = await fetch(`${API_URL}/experiments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const body = await res.json();
+
+      responseBox.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+      if (res.ok) {
+        form.reset();
+        loadExperiments();
+      }
+    });
+
+    loadExperiments();
+  </script>
+</body>
+</html>
