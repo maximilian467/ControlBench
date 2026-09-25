@@ -15,11 +15,14 @@ All requests and responses use JSON. There is no authentication (ControlBench is
 | `POST` | `/runs` | Create a run | `201` |
 | `GET` | `/runs` | List all runs; optional `?experiment_id=1` | `200` |
 | `GET` | `/runs/{id}` | Get one run | `200` |
-| `PATCH` | `/runs/{id}` | Set the final results of a run later (`reward`, `trains`, `stability_time`, `recovery_time`, `num_steps`, `duration`); only fields that are sent are changed | `200` |
+| `PATCH` | `/runs/{id}` | Set the final results of a run later (`reward`, `trains`, `stability_time`, `recovery_time`, `num_steps`, `duration`, `hyperparameters`); only fields that are sent are changed | `200` |
 | `DELETE` | `/runs/{id}` | Delete a run **including its metrics** | `204` |
 | `POST` | `/runs/{id}/metrics` | Store a **list** of metric points in one request | `201` |
 | `GET` | `/runs/{id}/metrics` | Metric points of a run, sorted by name and step; optional `?name=success_rate` and `?max_points=1000` | `200` |
 | `GET` | `/runs/{id}/metrics/names` | Names of the metrics this run has | `200` |
+| `POST` | `/runs/{id}/evaluations` | Store final key figures (per scenario); an existing value is overwritten | `201` |
+| `GET` | `/runs/{id}/evaluations` | Key figures of a run | `200` |
+| `GET` | `/summaries` | Per run: key figures and when `success_rate` first reached the threshold; optional `?experiment_id=1`, `?threshold=0.9` | `200` |
 
 ## Errors
 
@@ -79,6 +82,7 @@ Content-Type: application/json
 | `recovery_time` | float | no | seconds until recovery after a disturbance; `null` = no recovery / not measured |
 | `num_steps` | int | no | number of steps |
 | `duration` | float | no | **wall-clock time** in seconds |
+| `hyperparameters` | object | no | settings of the configuration, free-form JSON, e.g. `{"learning_rate": 0.0003, "net_arch": [256, 256]}`. Shown in the dashboard when a configuration is expanded. |
 
 **Set final results later** (for live uploads: create the run early, update it at the end)
 
@@ -137,3 +141,63 @@ GET /runs/1/metrics/names
 ```json
 ["episode_reward", "success_rate"]
 ```
+
+## Evaluations (final key figures)
+
+Metrics are **curves over training**. Evaluations are **single numbers that describe the finished controller**, e.g. its success rate, control effort or overshoot. Each value belongs to a **scenario**: `nominal` (the default) for unchanged conditions, any other name for a robustness test, e.g. `mass+20%` or `sensor_noise`.
+
+**Store key figures**
+
+```http
+POST /runs/1/evaluations
+Content-Type: application/json
+
+[
+  { "name": "success_rate",   "value": 0.96 },
+  { "name": "control_effort", "value": 41.2 },
+  { "name": "overshoot",      "value": 0.08 },
+  { "scenario": "mass+20%", "name": "success_rate", "value": 0.71 }
+]
+```
+
+```json
+201 Created
+{ "run_id": 1, "count": 4 }
+```
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `scenario` | string | no | `nominal` (default) or the name of a robustness test |
+| `name` | string | yes | name of the key figure |
+| `value` | float | yes | the value; `NaN`/`Infinity` are rejected (`422`) |
+
+There is exactly one value per run, scenario and name. Uploading the same one again **overwrites** it, so an evaluation can simply be repeated.
+
+Names the dashboard knows:
+
+| Name | Meaning |
+|---|---|
+| `success_rate` | share of successful evaluation episodes (0 to 1). Used as the final success rate of a run; without it, the last point of the `success_rate` curve is used. |
+| `control_effort` | **control effort**: ∫‖u‖² dt over an episode, i.e. the squared actuator commands summed over all actuators and integrated over time, averaged over the evaluation episodes. Works for one actuator (pendulum) as well as for eight (walking robot). |
+
+Any other name is allowed and appears in the expanded configuration in the dashboard.
+
+**Summaries**
+
+```http
+GET /summaries?experiment_id=1&threshold=0.9
+```
+
+```json
+[
+  {
+    "run_id": 12,
+    "steps_to_threshold": 30000,
+    "time_to_threshold": 412.5,
+    "last_success_rate": 0.98,
+    "evaluations": [{ "id": 1, "run_id": 12, "scenario": "nominal", "name": "control_effort", "value": 41.2 }]
+  }
+]
+```
+
+`steps_to_threshold` and `time_to_threshold` are the step and wall-clock time at which the `success_rate` curve **first** reached the threshold (`null` = never). The database computes this from the metric points, so the dashboard does not have to load the curves.

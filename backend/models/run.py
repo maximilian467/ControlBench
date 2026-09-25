@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -25,6 +27,8 @@ class RunCreate(BaseModel):
     # Rechenzeit des Runs in Sekunden (nicht die simulierte Zeit, die ergibt sich aus num_steps);
     # None bei alten Runs, die das nicht erfasst haben
     duration: float | None = None
+    # Einstellungen der Konfiguration, frei aufgebaut, z. B. {"learning_rate": 0.0003, "net_arch": [256, 256]}
+    hyperparameters: dict[str, Any] | None = None
 
 
 class RunUpdate(BaseModel):
@@ -42,6 +46,7 @@ class RunUpdate(BaseModel):
     recovery_time: float | None = None
     num_steps: int | None = None
     duration: float | None = None
+    hyperparameters: dict[str, Any] | None = None
 
 
 class Run(RunCreate):

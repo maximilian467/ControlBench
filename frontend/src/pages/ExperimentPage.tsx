@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { Fragment, useState, type ReactNode } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { ThinkingOrb } from "thinking-orbs"
 
@@ -11,7 +11,7 @@ import { Segmented } from "@/components/Segmented"
 import { StatStrip } from "@/components/StatStrip"
 import { useAsync } from "@/hooks/useAsync"
 import { useMetricNames, useRunMetrics } from "@/hooks/useRunMetrics"
-import { api, type Run } from "@/lib/api"
+import { api, type Run, type RunSummary } from "@/lib/api"
 import {
   aggregateCurves,
   aggregateReference,
@@ -19,11 +19,12 @@ import {
   mean,
   type BandMode,
   type Configuration,
+  type Stat,
 } from "@/lib/configurations"
 import type { Formatters } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import type { Messages } from "@/lib/messages"
-import { isRateMetric, STANDARD_METRICS } from "@/lib/metrics"
+import { isRateMetric, NOMINAL, STANDARD_METRICS, SUCCESS_THRESHOLD } from "@/lib/metrics"
 import { cn } from "@/lib/utils"
 
 const MAX_SELECTED = 5
@@ -35,12 +36,15 @@ export function ExperimentPage() {
   const id = Number(useParams().id)
   const navigate = useNavigate()
   const { t } = useI18n()
-  const result = useAsync(() => Promise.all([api.experiment(id), api.runs(id)]), `experiment-${id}`)
+  const result = useAsync(
+    () => Promise.all([api.experiment(id), api.runs(id), api.summaries(id, SUCCESS_THRESHOLD)]),
+    `experiment-${id}`,
+  )
 
   if (result.status === "loading") return <Loader label={t.loadingExperiment} />
   if (result.status === "error") return <ErrorState error={result.error} onRetry={result.reload} />
 
-  const [experiment, runs] = result.data
+  const [experiment, runs, summaries] = result.data
 
   async function deleteExperiment() {
     await api.deleteExperiment(id)
@@ -82,16 +86,18 @@ export function ExperimentPage() {
         </section>
       ) : (
         // key: Nach dem Löschen eines Runs bleibt die Auswahl erhalten, bei einem anderen Experiment nicht
-        <ExperimentContent key={experiment.id} runs={runs} onDeleteRun={deleteRun} />
+        <ExperimentContent key={experiment.id} runs={runs} summaries={summaries} onDeleteRun={deleteRun} />
       )}
     </div>
   )
 }
 
 /** Alles, was Runs braucht. Eigene Komponente, damit die Auswahl mit den geladenen Runs starten kann. */
-function ExperimentContent({ runs, onDeleteRun }: { runs: Run[]; onDeleteRun: (runId: number) => Promise<void> }) {
+type ContentProps = { runs: Run[]; summaries: RunSummary[]; onDeleteRun: (runId: number) => Promise<void> }
+
+function ExperimentContent({ runs, summaries, onDeleteRun }: ContentProps) {
   const { t, f } = useI18n()
-  const configurations = groupConfigurations(runs)
+  const configurations = groupConfigurations(runs, summaries)
   const best = configurations[0]
 
   // Start: alle Konfigurationen im Diagramm (höchstens MAX_SELECTED), denn der Vergleich ist der Sinn der Seite
@@ -158,16 +164,40 @@ function formatMeanStd(configuration: Configuration, f: Formatters): string {
   return configuration.rewardStd === null ? meanText : `${meanText} ± ${f.reward(configuration.rewardStd)}`
 }
 
-/** Hebt die Konfiguration mit dem höchsten mittleren Reward hervor. */
+/** "96 %" bzw. "96 % ± 3" für eine Success Rate über mehrere Seeds */
+function formatSuccess(success: Stat | null, f: Formatters): string {
+  if (success === null) return "–"
+  // Streuung in Prozentpunkten, ganzzahlig: "96 % ± 3"
+  return success.std === null
+    ? f.percent(success.mean)
+    : `${f.percent(success.mean)} ± ${f.integer(Math.round(success.std * 100))}`
+}
+
+/** "30k Steps · 4,2 min" bzw. "nie": wann die Seeds im Mittel die Schwelle erreicht haben */
+function formatReach(configuration: Configuration, t: Messages, f: Formatters): string {
+  // Ohne Training gibt es keinen Lernverlauf, also auch keinen Zeitpunkt, an dem die Schwelle erreicht wird
+  if (!configuration.trains) return "–"
+  if (configuration.stepsToThreshold === null) return configuration.success === null ? "–" : t.never
+  const parts = [`${f.steps(configuration.stepsToThreshold)} ${t.stepsUnit}`]
+  if (configuration.timeToThreshold !== null) parts.push(f.duration(configuration.timeToThreshold))
+  return parts.join(" · ")
+}
+
+function formatStat(value: Stat | null, f: Formatters): string {
+  if (value === null) return "–"
+  return value.std === null ? f.value(value.mean) : `${f.value(value.mean)} ± ${f.value(value.std)}`
+}
+
+/** Hebt die Konfiguration hervor, die am zuverlässigsten funktioniert (siehe groupConfigurations). */
 function BestConfigurationCard({ configuration, alone }: { configuration: Configuration; alone: boolean }) {
   const { t, f } = useI18n()
   const n = configuration.runs.length
   const facts = [
     ["Controller", configuration.controller],
     [t.seeds, String(n)],
-    [t.range, n > 1 ? `${f.reward(configuration.rewardMin)} … ${f.reward(configuration.rewardMax)}` : "–"],
-    [t.stable, `${configuration.stableCount} / ${n}`],
-    [t.avgTimeToStable, f.seconds(configuration.stabilityMean)],
+    [t.reachesThreshold(f.percent(SUCCESS_THRESHOLD)), formatReach(configuration, t, f)],
+    [t.controlEffort, formatStat(configuration.controlEffort, f)],
+    [t.rewardMean, formatMeanStd(configuration, f)],
     [t.avgWallClock, f.seconds(configuration.durationMean)],
   ]
 
@@ -180,7 +210,9 @@ function BestConfigurationCard({ configuration, alone }: { configuration: Config
         </span>
         <span className="text-lg font-medium">{configuration.name}</span>
         <span className="font-mono text-sm text-muted-foreground tabular-nums">
-          {t.rewardMean} {formatMeanStd(configuration, f)}
+          {configuration.success === null
+            ? `${t.rewardMean} ${formatMeanStd(configuration, f)}`
+            : `${t.successRate} ${formatSuccess(configuration.success, f)}`}
         </span>
       </div>
       <dl className="flex flex-wrap gap-x-10 gap-y-2">
@@ -356,8 +388,8 @@ type ConfigurationTableProps = {
 
 function ConfigurationTable({ configurations, bestKey, selected, colors, onToggle }: ConfigurationTableProps) {
   const { t, f } = useI18n()
-  const means = configurations.map((c) => c.rewardMean)
-  const [min, max] = [Math.min(...means), Math.max(...means)]
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const best = Math.max(...configurations.map((c) => c.success?.mean ?? 0))
 
   return (
     <section className="overflow-hidden rounded-lg border bg-card">
@@ -371,60 +403,149 @@ function ConfigurationTable({ configurations, bestKey, selected, colors, onToggl
             <th className="py-2.5 text-left font-normal">{t.configuration}</th>
             <th className="py-2.5 text-left font-normal">Controller</th>
             <th className="py-2.5 pr-6 text-right font-normal">{t.seeds}</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.successRate}</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.reachesThreshold(f.percent(SUCCESS_THRESHOLD))}</th>
+            <th className="py-2.5 pr-6 text-right font-normal">{t.controlEffort}</th>
             <th className="py-2.5 pr-6 text-right font-normal">{t.rewardMeanStd}</th>
-            <th className="py-2.5 pr-6 text-right font-normal">{t.range}</th>
-            <th className="py-2.5 pr-6 text-right font-normal">{t.stable}</th>
-            <th className="py-2.5 pr-6 text-right font-normal">{t.avgTimeToStable}</th>
-            <th className="py-2.5 pr-5 text-right font-normal">{t.avgWallClockTime}</th>
+            <th className="py-2.5 pr-3 text-right font-normal">{t.avgWallClockTime}</th>
+            <th className="w-10 pr-5">
+              <span className="sr-only">{t.details}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {configurations.map((configuration) => {
             const isSelected = selected.includes(configuration.key)
             const isBest = configuration.key === bestKey
+            const isOpen = expanded === configuration.key
             const n = configuration.runs.length
             return (
-              <tr key={configuration.key} className="border-b transition-colors last:border-b-0 hover:bg-muted/60">
-                <td className="py-3 pl-5">
-                  <SeriesCheckbox
-                    checked={isSelected}
-                    color={isSelected ? colors.get(configuration.key) : undefined}
-                    label={t.showNameInChart(configuration.name)}
-                    onChange={() => onToggle(configuration.key)}
-                  />
-                </td>
-                <td className={cn("font-medium", isBest && "text-accent-signal")}>{configuration.name}</td>
-                <td>
-                  <span className="rounded-sm border px-1.5 py-px font-mono text-xs text-muted-foreground">
-                    {configuration.controller}
-                  </span>
-                  {!configuration.trains && <span className="ml-2 text-xs text-faint-foreground">{t.noTraining}</span>}
-                </td>
-                <td className="pr-6 text-right font-mono text-xs text-muted-foreground tabular-nums">{n}</td>
-                <td className="pr-6 text-right font-mono text-xs tabular-nums">
-                  <span className="inline-flex items-center justify-end gap-3">
-                    <RewardBar share={max === min ? 1 : (configuration.rewardMean - min) / (max - min)} best={isBest} />
+              <Fragment key={configuration.key}>
+                <tr className="border-b transition-colors last:border-b-0 hover:bg-muted/60">
+                  <td className="py-3 pl-5">
+                    <SeriesCheckbox
+                      checked={isSelected}
+                      color={isSelected ? colors.get(configuration.key) : undefined}
+                      label={t.showNameInChart(configuration.name)}
+                      onChange={() => onToggle(configuration.key)}
+                    />
+                  </td>
+                  <td className={cn("font-medium", isBest && "text-accent-signal")}>{configuration.name}</td>
+                  <td>
+                    <span className="rounded-sm border px-1.5 py-px font-mono text-xs text-muted-foreground">
+                      {configuration.controller}
+                    </span>
+                    {!configuration.trains && <span className="ml-2 text-xs text-faint-foreground">{t.noTraining}</span>}
+                  </td>
+                  <td className="pr-6 text-right font-mono text-xs text-muted-foreground tabular-nums">{n}</td>
+                  <td className="pr-6 text-right font-mono text-xs tabular-nums">
+                    <span className="inline-flex items-center justify-end gap-3">
+                      {configuration.success !== null && (
+                        <RewardBar share={best > 0 ? configuration.success.mean / best : 0} best={isBest} />
+                      )}
+                      {formatSuccess(configuration.success, f)}
+                    </span>
+                  </td>
+                  <td className="pr-6 text-right font-mono text-xs tabular-nums">
+                    {formatReach(configuration, t, f)}
+                    {configuration.trains && configuration.stepsToThreshold !== null && configuration.reachedCount < n && (
+                      <span className="ml-1.5 text-faint-foreground">
+                        ({configuration.reachedCount}/{n})
+                      </span>
+                    )}
+                  </td>
+                  <td className="pr-6 text-right font-mono text-xs tabular-nums">
+                    {formatStat(configuration.controlEffort, f)}
+                  </td>
+                  <td className="pr-6 text-right font-mono text-xs text-muted-foreground tabular-nums">
                     {formatMeanStd(configuration, f)}
-                  </span>
-                </td>
-                <td className="pr-6 text-right font-mono text-xs text-muted-foreground tabular-nums">
-                  {n > 1 ? `${f.reward(configuration.rewardMin)} … ${f.reward(configuration.rewardMax)}` : "–"}
-                </td>
-                <td className="pr-6 text-right font-mono text-xs tabular-nums">
-                  {configuration.stableCount} / {n}
-                </td>
-                <td className="pr-6 text-right font-mono text-xs tabular-nums">
-                  {f.seconds(configuration.stabilityMean)}
-                </td>
-                <td className="pr-5 text-right font-mono text-xs tabular-nums">
-                  {f.seconds(configuration.durationMean)}
-                </td>
-              </tr>
+                  </td>
+                  <td className="pr-3 text-right font-mono text-xs text-muted-foreground tabular-nums">
+                    {f.seconds(configuration.durationMean)}
+                  </td>
+                  <td className="pr-5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(isOpen ? null : configuration.key)}
+                      aria-expanded={isOpen}
+                      aria-label={t.showDetails(configuration.name)}
+                      className="inline-flex size-6 items-center justify-center rounded-md text-faint-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <svg
+                        viewBox="0 0 10 6"
+                        className={cn("h-1.5 w-2.5 transition-transform", isOpen && "rotate-180")}
+                        aria-hidden
+                      >
+                        <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-b bg-background/40">
+                    <td colSpan={10} className="px-5 py-4">
+                      <ConfigurationDetails configuration={configuration} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             )
           })}
         </tbody>
       </table>
     </section>
+  )
+}
+
+/** Aufgeklappte Zeile: Hyperparameter und alle Kennwerte der Konfiguration. */
+function ConfigurationDetails({ configuration }: { configuration: Configuration }) {
+  const { t, f } = useI18n()
+  const nominal = configuration.evaluations.get(NOMINAL) ?? new Map<string, Stat>()
+  const n = configuration.runs.length
+  const basics: [string, string][] = [
+    [t.stable, `${configuration.stableCount} / ${n}`],
+    [t.avgTimeToStable, f.seconds(configuration.stabilityMean)],
+    [t.range, n > 1 ? `${f.reward(configuration.rewardMin)} … ${f.reward(configuration.rewardMax)}` : "–"],
+  ]
+
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-xs text-faint-foreground">
+          {t.hyperparameters}
+          {configuration.hyperparametersDiffer && <span className="ml-2">{t.hyperparametersDiffer}</span>}
+        </h3>
+        {configuration.hyperparameters === null ? (
+          <p className="text-xs text-faint-foreground">{t.noHyperparameters}</p>
+        ) : (
+          <KeyValueList
+            entries={Object.entries(configuration.hyperparameters).map(([key, value]) => [
+              key,
+              typeof value === "string" ? value : JSON.stringify(value),
+            ])}
+          />
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <h3 className="text-xs text-faint-foreground">{t.kpis}</h3>
+        <KeyValueList
+          entries={[...basics, ...[...nominal].map(([name, value]): [string, string] => [name, formatStat(value, f)])]}
+        />
+      </div>
+    </div>
+  )
+}
+
+function KeyValueList({ entries }: { entries: [string, string][] }) {
+  return (
+    <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1 font-mono text-xs">
+      {entries.map(([key, value]) => (
+        <Fragment key={key}>
+          <dt className="truncate text-muted-foreground">{key}</dt>
+          <dd className="text-right tabular-nums">{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
   )
 }
 

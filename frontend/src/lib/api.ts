@@ -22,6 +22,25 @@ export type Run = {
   recovery_time: number | null
   num_steps: number | null
   duration: number | null // Rechenzeit in Sekunden
+  hyperparameters: Record<string, unknown> | null // Einstellungen der Konfiguration, frei aufgebaut
+}
+
+/** Ein Endkennwert eines Runs, z. B. control_effort im Szenario "nominal" */
+export type Evaluation = {
+  id: number
+  run_id: number
+  scenario: string // "nominal" oder ein Robustheitstest, z. B. "mass+20%"
+  name: string
+  value: number
+}
+
+/** Pro Run berechnet der Server, wann die Success Rate die Schwelle erreicht hat, plus die Kennwerte */
+export type RunSummary = {
+  run_id: number
+  steps_to_threshold: number | null // null = nie erreicht
+  time_to_threshold: number | null
+  last_success_rate: number | null
+  evaluations: Evaluation[]
 }
 
 export type Metric = {
@@ -65,4 +84,10 @@ export const api = {
   metrics: (runId: number, name: string, maxPoints: number) =>
     request<Metric[]>(`/runs/${runId}/metrics?name=${encodeURIComponent(name)}&max_points=${maxPoints}`),
   metricNames: (runId: number) => request<string[]>(`/runs/${runId}/metrics/names`),
+  summaries: (experimentId: number | undefined, threshold: number) =>
+    request<RunSummary[]>(
+      experimentId === undefined
+        ? `/summaries?threshold=${threshold}`
+        : `/summaries?experiment_id=${experimentId}&threshold=${threshold}`,
+    ),
 }

@@ -1,4 +1,8 @@
-import type { Run } from "@/lib/api"
+import type { Run, RunSummary } from "@/lib/api"
+import { CONTROL_EFFORT, NOMINAL } from "@/lib/metrics"
+
+/** Mittelwert, Standardabweichung und Anzahl über die Seeds */
+export type Stat = { mean: number; std: number | null; n: number }
 
 /** Alle Runs einer Konfiguration (gleicher Controller, gleicher Name), die sich nur im Seed unterscheiden. */
 export type Configuration = {
@@ -15,6 +19,18 @@ export type Configuration = {
   stableCount: number
   stabilityMean: number | null // Mittel über die Runs, die stabil wurden
   durationMean: number | null
+  /** Success Rate am Ende: Kennwert success_rate (nominal), sonst der letzte Punkt der Kurve */
+  success: Stat | null
+  /** Wie viele Seeds die Schwelle (z. B. 90 %) erreicht haben, und im Mittel wann */
+  reachedCount: number
+  stepsToThreshold: number | null
+  timeToThreshold: number | null
+  controlEffort: Stat | null
+  /** Alle Kennwerte, pro Szenario und Name gemittelt über die Seeds */
+  evaluations: Map<string, Map<string, Stat>>
+  /** Hyperparameter des ersten Seeds; differ = die Seeds haben unterschiedliche */
+  hyperparameters: Record<string, unknown> | null
+  hyperparametersDiffer: boolean
 }
 
 export function mean(values: number[]): number {
@@ -28,12 +44,39 @@ export function std(values: number[]): number | null {
   return Math.sqrt(values.reduce((sum, v) => sum + (v - m) ** 2, 0) / (values.length - 1))
 }
 
-function present(values: (number | null)[]): number[] {
-  return values.filter((v): v is number => v !== null)
+function present(values: (number | null | undefined)[]): number[] {
+  return values.filter((v): v is number => v !== null && v !== undefined)
 }
 
-/** Gruppiert Runs nach Konfiguration und sortiert nach mittlerem Reward, beste zuerst. */
-export function groupConfigurations(runs: Run[]): Configuration[] {
+function stat(values: number[]): Stat | null {
+  return values.length ? { mean: mean(values), std: std(values), n: values.length } : null
+}
+
+/**
+ * Reihenfolge der Konfigurationen: Entscheidend ist, ob der Controller funktioniert, nicht der Reward.
+ * 1. höhere Success Rate
+ * 2. unter trainierenden Controllern: erreicht die Schwelle früher (Rechenzeit, sonst Steps)
+ * 3. geringerer Stellaufwand  4. höherer Reward
+ */
+function compareConfigurations(a: Configuration, b: Configuration): number {
+  const successA = a.success?.mean ?? -1
+  const successB = b.success?.mean ?? -1
+  if (Math.abs(successA - successB) > 1e-9) return successB - successA
+  // Controller ohne Training "erreichen" nichts über die Zeit; der Vergleich gilt nur unter Lernenden
+  if (a.trains && b.trains) {
+    const reachA = a.timeToThreshold ?? a.stepsToThreshold ?? Infinity
+    const reachB = b.timeToThreshold ?? b.stepsToThreshold ?? Infinity
+    if (reachA !== reachB) return reachA - reachB
+  }
+  if (a.controlEffort && b.controlEffort && a.controlEffort.mean !== b.controlEffort.mean) {
+    return a.controlEffort.mean - b.controlEffort.mean
+  }
+  return b.rewardMean - a.rewardMean
+}
+
+/** Gruppiert Runs nach Konfiguration und sortiert sie, beste zuerst (siehe compareConfigurations). */
+export function groupConfigurations(runs: Run[], summaries: RunSummary[] = []): Configuration[] {
+  const summaryOf = new Map(summaries.map((summary) => [summary.run_id, summary]))
   const groups = new Map<string, Run[]>()
   for (const run of runs) {
     const key = `${run.controller}\u0000${run.name}`
@@ -45,6 +88,25 @@ export function groupConfigurations(runs: Run[]): Configuration[] {
       const rewards = group.map((run) => run.reward)
       const stability = present(group.map((run) => run.stability_time))
       const durations = present(group.map((run) => run.duration))
+      const runSummaries = group.map((run) => summaryOf.get(run.id))
+      const nominal = (summary: RunSummary | undefined, name: string) =>
+        summary?.evaluations.find((e) => e.scenario === NOMINAL && e.name === name)?.value
+      const reached = runSummaries.filter((summary) => summary?.steps_to_threshold !== null && summary !== undefined)
+
+      // Kennwerte: Szenario -> Name -> Werte der Seeds
+      const values = new Map<string, Map<string, number[]>>()
+      for (const summary of runSummaries) {
+        for (const e of summary?.evaluations ?? []) {
+          const byName = values.get(e.scenario) ?? new Map<string, number[]>()
+          byName.set(e.name, [...(byName.get(e.name) ?? []), e.value])
+          values.set(e.scenario, byName)
+        }
+      }
+      const evaluations = new Map(
+        [...values].map(([scenario, byName]) => [scenario, new Map([...byName].map(([name, v]) => [name, stat(v)!]))]),
+      )
+
+      const hyperparameters = group[0].hyperparameters
       return {
         key,
         name: group[0].name,
@@ -58,9 +120,21 @@ export function groupConfigurations(runs: Run[]): Configuration[] {
         stableCount: stability.length,
         stabilityMean: stability.length ? mean(stability) : null,
         durationMean: durations.length ? mean(durations) : null,
+        success: stat(present(runSummaries.map((summary) => nominal(summary, "success_rate") ?? summary?.last_success_rate))),
+        reachedCount: reached.length,
+        stepsToThreshold: reached.length ? mean(present(reached.map((summary) => summary!.steps_to_threshold))) : null,
+        timeToThreshold: present(reached.map((summary) => summary!.time_to_threshold)).length
+          ? mean(present(reached.map((summary) => summary!.time_to_threshold)))
+          : null,
+        controlEffort: stat(present(runSummaries.map((summary) => nominal(summary, CONTROL_EFFORT)))),
+        evaluations,
+        hyperparameters,
+        hyperparametersDiffer: group.some(
+          (run) => JSON.stringify(run.hyperparameters) !== JSON.stringify(hyperparameters),
+        ),
       }
     })
-    .sort((a, b) => b.rewardMean - a.rewardMean)
+    .sort(compareConfigurations)
 }
 
 export type CurvePoint = { x: number; y: number }

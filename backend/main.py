@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
-from routes import experiments, metrics, runs
+from routes import evaluations, experiments, metrics, runs, summaries
 
 # Die Tabellen legt Alembic an: im Ordner backend/ "alembic upgrade head" ausführen
 
@@ -35,3 +35,5 @@ async def validation_error(request: Request, exc: RequestValidationError):
 app.include_router(experiments.router)
 app.include_router(runs.router)
 app.include_router(metrics.router)
+app.include_router(evaluations.router)
+app.include_router(summaries.router)
