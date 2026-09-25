@@ -375,7 +375,14 @@ function MetricsPanel({ configurations, colors }: { configurations: Configuratio
                 <li key={s.id} className="flex items-center gap-2">
                   <LegendSymbol kind={s.kind} color={s.color} />
                   {s.label}
-                  {s.kind === "reference" && <span className="text-faint-foreground">{t.noTraining}</span>}
+                  {s.kind === "reference" && (
+                    <>
+                      <span className="font-mono text-foreground tabular-nums">
+                        {isRate ? f.percent(s.points[0].y) : f.value(s.points[0].y)}
+                      </span>
+                      <span className="text-faint-foreground">{t.noTraining}</span>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

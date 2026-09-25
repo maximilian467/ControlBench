@@ -38,6 +38,7 @@ type MetricChartProps = {
 
 const MARGIN = { top: 12, right: 8, bottom: 28, left: 48 }
 const MARKER_SIZE = 6 // halbe Kantenlänge des X in Pixeln
+const REFERENCE_GAP = 3 // Abstand in Pixeln zwischen Referenzlinien mit gleichem Wert
 
 /** Liniendiagramm mehrerer Konfigurationen mit Fadenkreuz und Werten beim Überfahren. */
 export function MetricChart(props: MetricChartProps) {
@@ -108,17 +109,18 @@ function Chart({
   const yTicks = yScale.ticks(5)
   const yStep = yTicks.length > 1 ? yTicks[1] - yTicks[0] : 1
 
-  // Beschriftungen der Referenzlinien: liegen zwei Linien nah beieinander, weichen die Texte nach unten aus
-  // (nach oben ginge am oberen Rand nicht). Von oben nach unten, jede mindestens 12 Pixel unter der vorigen.
-  const labelY = new Map<string, number>()
-  let previous = -Infinity
-  for (const s of [...references].sort((a, b) => yScale(a.points[0].y) - yScale(b.points[0].y))) {
-    const y = Math.max(yScale(s.points[0].y) - 6, previous + 12, 4)
-    labelY.set(s.id, y)
-    previous = y
+  // Referenzlinien, die (fast) auf derselben Höhe liegen, würden sich verdecken. Innerhalb einer solchen Gruppe
+  // laufen sie wie Gleise 3 Pixel versetzt nebeneinander, so bleiben alle Farben sichtbar. Der genaue Wert steht
+  // in Legende und Tooltip.
+  const shift = new Map<string, number>()
+  const byHeight = [...references].sort((a, b) => yScale(a.points[0].y) - yScale(b.points[0].y))
+  for (let start = 0; start < byHeight.length; ) {
+    let end = start + 1
+    while (end < byHeight.length && yScale(byHeight[end].points[0].y) - yScale(byHeight[start].points[0].y) < 3) end++
+    const group = byHeight.slice(start, end)
+    group.forEach((s, index) => shift.set(s.id, (index - (group.length - 1) / 2) * REFERENCE_GAP))
+    start = end
   }
-  // Referenzwerte eine Stelle genauer als die Achse, damit nahe Linien unterscheidbar bleiben
-  const formatReference = (v: number) => (formatYTick ? formatYTick(v, yStep / 10) : formatY(v))
 
   const tolerance = (xScale.domain()[1] / innerWidth) * 12 // 12 Pixel
   const hovered =
@@ -164,42 +166,6 @@ function Chart({
               </text>
             ))}
 
-          {/* Referenzlinien zuerst, damit die Lernkurven darüber liegen */}
-          {references.map((s) => {
-            const point = s.points[0]
-            return (
-              <g key={s.id}>
-                {hasBand(point) && (
-                  <rect
-                    x={0}
-                    width={innerWidth}
-                    y={yScale(point.high!)}
-                    height={Math.max(1, yScale(point.low!) - yScale(point.high!))}
-                    fill={s.color}
-                    fillOpacity={0.08}
-                  />
-                )}
-                <line
-                  x2={innerWidth}
-                  y1={yScale(point.y)}
-                  y2={yScale(point.y)}
-                  stroke={s.color}
-                  strokeWidth={1.5}
-                  strokeDasharray="6 4"
-                />
-                <text
-                  x={innerWidth - 4}
-                  y={labelY.get(s.id)}
-                  textAnchor="end"
-                  fill={s.color}
-                  className="font-mono text-[10px]"
-                >
-                  {s.label} {formatReference(point.y)}
-                </text>
-              </g>
-            )
-          })}
-
           {/* Bänder der Lernkurven, damit alle Linien darüber liegen */}
           {trained.map(
             (s) =>
@@ -241,6 +207,33 @@ function Chart({
               </g>
             ),
           )}
+
+          {/* Referenzlinien über den Lernkurven: Durch die Strichlücken bleiben Kurven darunter sichtbar; die Werte stehen in der Legende */}
+          {references.map((s) => {
+            const point = s.points[0]
+            return (
+              <g key={s.id}>
+                {hasBand(point) && (
+                  <rect
+                    x={0}
+                    width={innerWidth}
+                    y={yScale(point.high!)}
+                    height={Math.max(1, yScale(point.low!) - yScale(point.high!))}
+                    fill={s.color}
+                    fillOpacity={0.08}
+                  />
+                )}
+                <line
+                  x2={innerWidth}
+                  y1={yScale(point.y) + shift.get(s.id)!}
+                  y2={yScale(point.y) + shift.get(s.id)!}
+                  stroke={s.color}
+                  strokeWidth={2}
+                  strokeDasharray="7 5"
+                />
+              </g>
+            )
+          })}
 
           {hoverX !== null && (
             <g>
@@ -343,7 +336,7 @@ export function LegendSymbol({ kind, color }: { kind: SeriesKind; color: string 
   }
   return (
     <svg viewBox="0 0 14 2" className="h-0.5 w-3.5" aria-hidden>
-      <line x2={14} y1={1} y2={1} stroke={color} strokeWidth={2} strokeDasharray={kind === "reference" ? "4 2" : undefined} />
+      <line x2={14} y1={1} y2={1} stroke={color} strokeWidth={2} strokeDasharray={kind === "reference" ? "5 4" : undefined} />
     </svg>
   )
 }
