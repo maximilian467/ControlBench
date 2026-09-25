@@ -12,6 +12,9 @@ class RunCreate(BaseModel):
     # Name der Konfiguration, z. B. "SAC lr 3e-4". Mehrere Seeds derselben Konfiguration tragen denselben Namen,
     # so kann die Oberfläche über die Seeds mitteln
     name: str
+    # False bei Controllern ohne Training (LQR, PID, ...). Die Oberfläche zeigt sie als Referenzlinie
+    # statt als Lernkurve. Gilt für die ganze Konfiguration, also für alle ihre Seeds.
+    trains: bool = True
     seed: int
     reward: float
     # None, wenn das System im Run nie stabilisiert bzw. sich nie erholt hat
@@ -34,6 +37,7 @@ class RunUpdate(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
 
     reward: float | None = None
+    trains: bool | None = None
     stability_time: float | None = None
     recovery_time: float | None = None
     num_steps: int | None = None

@@ -5,16 +5,25 @@ import { ThinkingOrb } from "thinking-orbs"
 import { ErrorState } from "@/components/ErrorState"
 import { HoldToDelete } from "@/components/HoldToDelete"
 import { Loader } from "@/components/Loader"
-import { MetricChart, type ChartSeries } from "@/components/MetricChart"
+import { LegendSymbol, MetricChart, type ChartSeries } from "@/components/MetricChart"
+import { MetricPicker } from "@/components/MetricPicker"
 import { Segmented } from "@/components/Segmented"
 import { StatStrip } from "@/components/StatStrip"
 import { useAsync } from "@/hooks/useAsync"
 import { useMetricNames, useRunMetrics } from "@/hooks/useRunMetrics"
 import { api, type Run } from "@/lib/api"
-import { aggregateCurves, groupConfigurations, mean, type Configuration } from "@/lib/configurations"
+import {
+  aggregateCurves,
+  aggregateReference,
+  groupConfigurations,
+  mean,
+  type BandMode,
+  type Configuration,
+} from "@/lib/configurations"
 import type { Formatters } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import type { Messages } from "@/lib/messages"
+import { isRateMetric, STANDARD_METRICS } from "@/lib/metrics"
 import { cn } from "@/lib/utils"
 
 const MAX_SELECTED = 5
@@ -189,29 +198,28 @@ function BestConfigurationCard({ configuration, alone }: { configuration: Config
 // ---------- Diagramm ----------
 
 type Axis = "steps" | "time"
-
-const METRIC_LABELS: Record<string, string> = {
-  success_rate: "Success Rate",
-  episode_reward: "Episode Reward",
-}
+type Budget = "full" | "equal"
 
 function MetricsPanel({ configurations, colors }: { configurations: Configuration[]; colors: Map<string, string> }) {
   const { t, f } = useI18n()
   const runIds = configurations.flatMap((c) => c.runs.map((run) => run.id))
-  const [metricName, setMetricName] = useState("success_rate")
+  const [metricName, setMetricName] = useState<string>(STANDARD_METRICS[0])
   const [axis, setAxis] = useState<Axis>("steps")
+  const [band, setBand] = useState<BandMode>("range")
+  const [budget, setBudget] = useState<Budget>("full")
 
   // Erst nur die Namen der Metriken, dann nur die angezeigte Metrik laden (ausgedünnt)
   const { names, loading: namesLoading } = useMetricNames(runIds)
-  const activeName = names.includes(metricName) ? metricName : (names[0] ?? null)
+  const fallback = STANDARD_METRICS.find((name) => names.includes(name)) ?? names[0] ?? null
+  const activeName = names.includes(metricName) ? metricName : fallback
   const { byRun: metricsByRun, loading: metricsLoading } = useRunMetrics(runIds, activeName)
   const loading = namesLoading || metricsLoading
-  const isRate = activeName?.endsWith("_rate") ?? false
+  const isRate = activeName !== null && isRateMetric(activeName)
 
   const series: ChartSeries[] = []
   const withoutData: string[] = []
   for (const configuration of configurations) {
-    // Eine Kurve pro Seed, dann gemittelt
+    // Eine Kurve pro Seed ...
     const curves = configuration.runs.map((run) => {
       const entry = metricsByRun.get(run.id)
       if (entry?.status !== "success") return []
@@ -220,49 +228,72 @@ function MetricsPanel({ configurations, colors }: { configurations: Configuratio
         .map((m) => ({ x: axis === "steps" ? m.step : (m.time as number), y: m.value }))
         .sort((a, b) => a.x - b.x)
     })
-    const points = aggregateCurves(curves)
-    if (points.length) {
-      series.push({ id: configuration.key, label: configuration.name, color: colors.get(configuration.key)!, points })
-    } else if (!loading) {
-      withoutData.push(configuration.name)
+    const base = { id: configuration.key, label: configuration.name, color: colors.get(configuration.key)! }
+
+    // ... Controller ohne Training werden eine Referenzlinie über die volle Breite ...
+    if (!configuration.trains) {
+      const reference = aggregateReference(curves, band)
+      if (reference) series.push({ ...base, kind: "reference", points: [reference] })
+      else if (!loading) withoutData.push(configuration.name)
+      continue
     }
+
+    // ... gelernte Kurven werden gemittelt. Bleiben nur wenige Punkte, zeigen X-Marker das ehrlicher als eine Linie
+    const points = aggregateCurves(curves, band)
+    if (points.length) series.push({ ...base, kind: points.length <= 3 ? "markers" : "line", points })
+    else if (!loading) withoutData.push(configuration.name)
   }
+
+  // Gleiches Budget: dort abschneiden, wo die kürzeste gelernte Kurve endet
+  const lines = series.filter((s) => s.kind === "line")
+  const equalBudgetEnd = lines.length > 1 ? Math.min(...lines.map((s) => s.points[s.points.length - 1].x)) : undefined
+  const xMax = budget === "equal" ? equalBudgetEnd : undefined
+  const shown =
+    xMax === undefined
+      ? series
+      : series.map((s) => ({ ...s, points: s.kind === "reference" ? s.points : s.points.filter((p) => p.x <= xMax) }))
 
   return (
     <section className="rounded-lg border bg-card">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b px-5 py-3">
-        <div className="flex items-center gap-3">
-          {names.length > 1 ? (
-            <select
-              value={activeName}
-              onChange={(event) => setMetricName(event.target.value)}
-              aria-label={t.metric}
-              className="h-7 rounded-md border border-input bg-transparent px-2 text-sm font-medium outline-none focus-visible:border-ring"
-            >
-              {names.map((name) => (
-                <option key={name} value={name} className="bg-popover">
-                  {METRIC_LABELS[name] ?? name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <h2 className="text-sm font-medium">
-              {activeName === null ? t.metrics : (METRIC_LABELS[activeName] ?? activeName)}
-            </h2>
-          )}
-          <span className="text-xs text-faint-foreground">{t.chartCaption}</span>
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b px-5 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <MetricPicker names={names} value={activeName} onChange={setMetricName} />
           {loading && series.length > 0 && (
             <ThinkingOrb state="breathing" size={20} theme="dark" aria-label={t.loadingMetrics} />
           )}
         </div>
-        <Segmented
-          value={axis}
-          onChange={setAxis}
-          options={[
-            { value: "steps", label: t.steps },
-            { value: "time", label: t.wallClock },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            value={band}
+            onChange={setBand}
+            aria-label={t.band}
+            options={[
+              { value: "range", label: t.bandRange },
+              { value: "ci", label: t.bandCi },
+            ]}
+          />
+          {equalBudgetEnd !== undefined && (
+            <span title={t.budgetHint}>
+              <Segmented
+                value={budget}
+                onChange={setBudget}
+                aria-label={t.budget}
+                options={[
+                  { value: "full", label: t.budgetFull },
+                  { value: "equal", label: t.budgetEqual },
+                ]}
+              />
+            </span>
+          )}
+          <Segmented
+            value={axis}
+            onChange={setAxis}
+            options={[
+              { value: "steps", label: t.steps },
+              { value: "time", label: t.wallClock },
+            ]}
+          />
+        </div>
       </header>
 
       <div className="px-5 pt-4 pb-3">
@@ -274,26 +305,30 @@ function MetricsPanel({ configurations, colors }: { configurations: Configuratio
             <span className="font-mono text-xs text-faint-foreground">{t.loadingMetrics}</span>
           </div>
         ) : series.length === 0 ? (
-          <ChartMessage>
-            {axis === "time" ? t.noTimestamps : t.noDataPoints}
-          </ChartMessage>
+          <ChartMessage>{axis === "time" ? t.noTimestamps : t.noDataPoints}</ChartMessage>
         ) : (
           <MetricChart
-            series={series}
+            series={shown}
             yDomain={isRate ? [0, 1] : undefined}
+            xMax={xMax}
             formatX={(v) => (axis === "steps" ? f.steps(v) : f.duration(v))}
             formatY={(v) => (isRate ? f.percent(v) : f.value(v))}
+            formatYTick={isRate ? undefined : f.tick}
           />
         )}
         {series.length > 0 && (
-          <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-            {series.map((s) => (
-              <li key={s.id} className="flex items-center gap-2">
-                <span className="h-0.5 w-3.5 rounded-full" style={{ background: s.color }} />
-                {s.label}
-              </li>
-            ))}
-          </ul>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+            <ul className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+              {series.map((s) => (
+                <li key={s.id} className="flex items-center gap-2">
+                  <LegendSymbol kind={s.kind} color={s.color} />
+                  {s.label}
+                  {s.kind === "reference" && <span className="text-faint-foreground">{t.noTraining}</span>}
+                </li>
+              ))}
+            </ul>
+            <span className="text-xs text-faint-foreground">{band === "ci" ? t.captionCi : t.captionRange}</span>
+          </div>
         )}
         {withoutData.length > 0 && series.length > 0 && (
           <p className="mt-2 text-xs text-faint-foreground">
@@ -363,6 +398,7 @@ function ConfigurationTable({ configurations, bestKey, selected, colors, onToggl
                   <span className="rounded-sm border px-1.5 py-px font-mono text-xs text-muted-foreground">
                     {configuration.controller}
                   </span>
+                  {!configuration.trains && <span className="ml-2 text-xs text-faint-foreground">{t.noTraining}</span>}
                 </td>
                 <td className="pr-6 text-right font-mono text-xs text-muted-foreground tabular-nums">{n}</td>
                 <td className="pr-6 text-right font-mono text-xs tabular-nums">

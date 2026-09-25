@@ -15,7 +15,7 @@ All requests and responses use JSON. There is no authentication (ControlBench is
 | `POST` | `/runs` | Create a run | `201` |
 | `GET` | `/runs` | List all runs; optional `?experiment_id=1` | `200` |
 | `GET` | `/runs/{id}` | Get one run | `200` |
-| `PATCH` | `/runs/{id}` | Set the final results of a run later (`reward`, `stability_time`, `recovery_time`, `num_steps`, `duration`); only fields that are sent are changed | `200` |
+| `PATCH` | `/runs/{id}` | Set the final results of a run later (`reward`, `trains`, `stability_time`, `recovery_time`, `num_steps`, `duration`); only fields that are sent are changed | `200` |
 | `DELETE` | `/runs/{id}` | Delete a run **including its metrics** | `204` |
 | `POST` | `/runs/{id}/metrics` | Store a **list** of metric points in one request | `201` |
 | `GET` | `/runs/{id}/metrics` | Metric points of a run, sorted by name and step; optional `?name=success_rate` and `?max_points=1000` | `200` |
@@ -72,6 +72,7 @@ Content-Type: application/json
 | `experiment_id` | int | yes | experiment the run belongs to |
 | `controller` | string | yes | algorithm or controller, e.g. `SAC`, `PPO`, `LQR` |
 | `name` | string | yes | name of the configuration. **All seeds of a configuration use the same name**, different settings use a different name. |
+| `trains` | bool | no | `false` for controllers without training (LQR, PID, MPC, ...). The dashboard draws them as a dashed horizontal reference line instead of a learning curve. Default `true`; can be corrected with `PATCH`. |
 | `seed` | int | yes | seed of the run |
 | `reward` | float | yes | final result of the run (higher is better) |
 | `stability_time` | float | no | seconds until the system is stable; `null` = never stable |
@@ -88,7 +89,7 @@ Content-Type: application/json
 { "reward": -120.4, "stability_time": 0.8, "num_steps": 150000, "duration": 1320.5 }
 ```
 
-Fields that are not sent stay unchanged. Optional fields can be reset with `null`; `reward` must not be `null` (`422`).
+Fields that are not sent stay unchanged. Optional fields can be reset with `null`; `reward` and `trains` must not be `null` (`422`).
 
 ## Metrics
 

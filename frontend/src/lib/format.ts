@@ -35,6 +35,12 @@ export function createFormatters(locale: string) {
     /** Beliebiger Messwert im Diagramm */
     value: (v: number) => value.format(v),
 
+    /** Achsenbeschriftung: so viele Nachkommastellen, wie der Abstand der Striche braucht (0,085 statt 0,09) */
+    tick: (v: number, step: number) => {
+      const digits = Math.min(6, Math.max(0, -Math.floor(Math.log10(step))))
+      return new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)
+    },
+
     /** 0.94 -> "94%" (en) bzw. "94 %" (de) */
     percent: (v: number) => percent.format(v),
   }

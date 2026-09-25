@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Index
+from sqlalchemy import ForeignKey, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database.db import Base
@@ -21,6 +21,8 @@ class RunTable(Base):
     controller: Mapped[str]  # z. B. "SAC", "PPO", "LQR"
     # Name der Konfiguration, z. B. "SAC lr 3e-4". Runs mit gleichem Namen unterscheiden sich nur im Seed
     name: Mapped[str]
+    # False bei Controllern ohne Training (LQR, PID, ...): Sie erscheinen im Diagramm als Referenzlinie
+    trains: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
     seed: Mapped[int]
     reward: Mapped[float]
     stability_time: Mapped[float | None]

@@ -15,6 +15,7 @@ export type Run = {
   experiment_id: number
   controller: string // z. B. "SAC", "PPO", "LQR"
   name: string // Konfiguration; Runs mit gleichem Namen unterscheiden sich nur im Seed
+  trains: boolean // false bei Controllern ohne Training (LQR, PID, ...)
   seed: number
   reward: number
   stability_time: number | null // null = nie stabil

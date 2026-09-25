@@ -120,3 +120,17 @@ def test_run_with_non_finite_value_returns_422(client, experiment, run, field):
 
     assert client.post("/runs", content=create, headers=headers).status_code == 422
     assert client.patch(f"/runs/{run['id']}", content=f'{{"{field}": Infinity}}', headers=headers).status_code == 422
+
+
+def test_runs_train_by_default_and_can_be_marked_as_not_training(client, experiment):
+    base = {"experiment_id": experiment["id"], "seed": 0, "reward": -100}
+    sac = client.post("/runs", json={**base, "controller": "SAC", "name": "SAC default"}).json()
+    lqr = client.post("/runs", json={**base, "controller": "LQR", "name": "LQR", "trains": False}).json()
+
+    assert sac["trains"] is True
+    assert lqr["trains"] is False
+
+
+def test_trains_can_be_corrected_but_not_set_to_null(client, run):
+    assert client.patch(f"/runs/{run['id']}", json={"trains": False}).json()["trains"] is False
+    assert client.patch(f"/runs/{run['id']}", json={"trains": None}).status_code == 422

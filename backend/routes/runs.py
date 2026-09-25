@@ -47,8 +47,9 @@ def update_run(run_id: int, data: RunUpdate, db: Session = Depends(get_db)):
     # exclude_unset: nur Felder ändern, die der Client wirklich mitgeschickt hat.
     # So lässt sich z. B. stability_time bewusst auf null setzen, ohne andere Felder zu berühren.
     changes = data.model_dump(exclude_unset=True)
-    if "reward" in changes and changes["reward"] is None:
-        raise HTTPException(status_code=422, detail="reward must not be null")
+    for required in ("reward", "trains"):
+        if required in changes and changes[required] is None:
+            raise HTTPException(status_code=422, detail=f"{required} must not be null")
     for field, value in changes.items():
         setattr(run, field, value)
     db.commit()

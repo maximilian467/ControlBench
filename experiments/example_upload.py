@@ -44,11 +44,17 @@ EXPERIMENT = {
 #               z. B. "SAC lr 1e-3".
 #   controller: der Algorithmus bzw. Regler, z. B. "SAC", "PPO", "LQR"
 #   seeds:      ein Run pro Seed. Ein deterministischer Regler wie LQR braucht nur einen.
+#   trains:     False bei Controllern ohne Training (LQR, PID, MPC, ...). ControlBench zeigt sie dann
+#               als waagerechte Referenzlinie statt als Lernkurve. Ohne Angabe: True.
 CONFIGURATIONS = [
     {"name": "SAC default", "controller": "SAC", "seeds": [0, 1, 2, 3, 4]},
     {"name": "PPO default", "controller": "PPO", "seeds": [0, 1, 2, 3, 4]},
-    {"name": "LQR", "controller": "LQR", "seeds": [0]},
+    {"name": "LQR", "controller": "LQR", "seeds": [0], "trains": False},
 ]
+
+# Standard-Metriken: Unter diesen Namen erscheinen Kurven in ControlBench ganz oben in der Metrik-Auswahl.
+# Beliebige weitere Namen sind erlaubt, sie sind über die Suche erreichbar.
+STANDARD_METRICS = ["success_rate", "episode_reward", "control_effort", "episode_length", "tracking_error"]
 
 # True:  Gibt es schon ein Experiment mit gleichem Namen und Environment,
 #        werden die neuen Runs dort angehängt.
@@ -96,6 +102,7 @@ def save_run(experiment_id: int, configuration: dict, seed: int, results: dict) 
             "experiment_id": experiment_id,
             "controller": configuration["controller"],
             "name": configuration["name"],
+            "trains": configuration.get("trains", True),
             "seed": seed,
             **results,
         },
