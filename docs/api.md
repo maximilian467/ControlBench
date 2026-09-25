@@ -22,6 +22,9 @@ All requests and responses use JSON. There is no authentication (ControlBench is
 | `GET` | `/runs/{id}/metrics/names` | Names of the metrics this run has | `200` |
 | `POST` | `/runs/{id}/evaluations` | Store final key figures (per scenario); an existing value is overwritten | `201` |
 | `GET` | `/runs/{id}/evaluations` | Key figures of a run | `200` |
+| `POST` | `/runs/{id}/traces` | Store points of a test episode (signals over simulated time); `?replace=true` replaces the signals that are sent | `201` |
+| `GET` | `/runs/{id}/traces` | Points of the episode trace; optional `?signal=u_0` and `?max_points=1000` | `200` |
+| `GET` | `/runs/{id}/traces/signals` | Names of the signals in the trace | `200` |
 | `GET` | `/summaries` | Per run: key figures and when `success_rate` first reached the threshold; optional `?experiment_id=1`, `?threshold=0.9` | `200` |
 
 ## Errors
@@ -195,9 +198,35 @@ GET /summaries?experiment_id=1&threshold=0.9
     "steps_to_threshold": 30000,
     "time_to_threshold": 412.5,
     "last_success_rate": 0.98,
-    "evaluations": [{ "id": 1, "run_id": 12, "scenario": "nominal", "name": "control_effort", "value": 41.2 }]
+    "evaluations": [{ "id": 1, "run_id": 12, "scenario": "nominal", "name": "control_effort", "value": 41.2 }],
+    "trace_signals": ["ball_x", "u_0", "u_1"]
   }
 ]
 ```
 
 `steps_to_threshold` and `time_to_threshold` are the step and wall-clock time at which the `success_rate` curve **first** reached the threshold (`null` = never). The database computes this from the metric points, so the dashboard does not have to load the curves.
+
+## Episode traces
+
+A trace records **one test episode** of the finished controller: states and actuator commands over the **simulated** time. The dashboard plots one signal at a time for the selected configurations, using the best seed that has a trace. This shows how calmly or nervously a controller acts, which a single number like the control effort cannot.
+
+```http
+POST /runs/1/traces
+Content-Type: application/json
+
+[
+  { "signal": "ball_x", "t": 0.00, "value": 0.080 },
+  { "signal": "u_0",    "t": 0.00, "value": 0.000 },
+  { "signal": "ball_x", "t": 0.02, "value": 0.079 },
+  { "signal": "u_0",    "t": 0.02, "value": -0.012 }
+]
+```
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `signal` | string | yes | name of the signal, e.g. `angle`, `ball_x`, `u_0` ... `u_7` for eight actuators |
+| `t` | float | yes | seconds since the start of the episode (simulated time) |
+| `value` | float | yes | value of the signal |
+
+Upload long traces in batches of about 10,000 points. To replace a trace with a new episode, send `?replace=true`: all points of the signals in the request are deleted first.
+

@@ -8,6 +8,7 @@ import { Loader } from "@/components/Loader"
 import { LegendSymbol, MetricChart, type ChartSeries } from "@/components/MetricChart"
 import { MetricPicker } from "@/components/MetricPicker"
 import { RobustnessTable } from "@/components/RobustnessTable"
+import { TracePanel } from "@/components/TracePanel"
 import { Segmented } from "@/components/Segmented"
 import { StatStrip } from "@/components/StatStrip"
 import { useAsync } from "@/hooks/useAsync"
@@ -155,6 +156,11 @@ function ExperimentContent({ runs, summaries, onDeleteRun }: ContentProps) {
         colors={colors}
         onToggle={toggle}
       />
+
+      {/* Nur wenn ausgewählte Konfigurationen einen Episodenverlauf haben */}
+      {configurations.some((c) => activeKeys.includes(c.key) && c.traceRun !== null) && (
+        <TracePanel configurations={configurations.filter((c) => activeKeys.includes(c.key))} colors={colors} />
+      )}
 
       {/* Nur wenn es Kennwerte aus Robustheitstests gibt */}
       {robustnessMetrics(configurations).length > 0 && <RobustnessTable configurations={configurations} />}

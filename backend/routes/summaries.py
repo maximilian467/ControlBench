@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from database.db import get_db
-from database.tables import EvaluationTable, MetricTable, RunTable
+from database.tables import EvaluationTable, MetricTable, RunTable, TraceTable
 from models.evaluation import Evaluation
 from models.summary import RunSummary
 
@@ -68,6 +68,15 @@ def list_summaries(
     ):
         evaluations.setdefault(evaluation.run_id, []).append(evaluation)
 
+    signals: dict[int, list[str]] = {}
+    for run_id, signal in db.execute(
+        select(TraceTable.run_id, TraceTable.signal)
+        .where(TraceTable.run_id.in_(run_ids))
+        .distinct()
+        .order_by(TraceTable.run_id, TraceTable.signal)
+    ):
+        signals.setdefault(run_id, []).append(signal)
+
     return [
         RunSummary(
             run_id=run_id,
@@ -75,6 +84,7 @@ def list_summaries(
             time_to_threshold=reached.get(run_id, (None, None))[1],
             last_success_rate=last_value.get(run_id),
             evaluations=[Evaluation.model_validate(e) for e in evaluations.get(run_id, [])],
+            trace_signals=signals.get(run_id, []),
         )
         for run_id in run_ids
     ]

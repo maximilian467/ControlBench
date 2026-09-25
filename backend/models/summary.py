@@ -15,3 +15,5 @@ class RunSummary(BaseModel):
     # Letzter Wert der Kurve success_rate; None, wenn der Run keine hat
     last_success_rate: float | None
     evaluations: list[Evaluation]
+    # Signale des Episodenverlaufs, leer wenn der Run keinen hat
+    trace_signals: list[str] = []

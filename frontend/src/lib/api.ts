@@ -41,6 +41,16 @@ export type RunSummary = {
   time_to_threshold: number | null
   last_success_rate: number | null
   evaluations: Evaluation[]
+  trace_signals: string[] // Signale des Episodenverlaufs, leer ohne Verlauf
+}
+
+/** Ein Punkt im Verlauf einer Test-Episode */
+export type TracePoint = {
+  id: number
+  run_id: number
+  signal: string // z. B. "angle" oder "u_0"
+  t: number // Sekunden seit Start der Episode (simulierte Zeit)
+  value: number
 }
 
 export type Metric = {
@@ -84,6 +94,9 @@ export const api = {
   metrics: (runId: number, name: string, maxPoints: number) =>
     request<Metric[]>(`/runs/${runId}/metrics?name=${encodeURIComponent(name)}&max_points=${maxPoints}`),
   metricNames: (runId: number) => request<string[]>(`/runs/${runId}/metrics/names`),
+  /** Verlauf eines Signals in der Test-Episode, vom Server auf höchstens maxPoints Punkte ausgedünnt */
+  trace: (runId: number, signal: string, maxPoints: number) =>
+    request<TracePoint[]>(`/runs/${runId}/traces?signal=${encodeURIComponent(signal)}&max_points=${maxPoints}`),
   summaries: (experimentId: number | undefined, threshold: number) =>
     request<RunSummary[]>(
       experimentId === undefined

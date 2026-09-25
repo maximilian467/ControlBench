@@ -31,6 +31,8 @@ export type Configuration = {
   /** Hyperparameter des ersten Seeds; differ = die Seeds haben unterschiedliche */
   hyperparameters: Record<string, unknown> | null
   hyperparametersDiffer: boolean
+  /** Seed mit Episodenverlauf, der am besten abgeschnitten hat; null ohne Verlauf */
+  traceRun: { run: Run; signals: string[] } | null
 }
 
 export function mean(values: number[]): number {
@@ -107,6 +109,16 @@ export function groupConfigurations(runs: Run[], summaries: RunSummary[] = []): 
       )
 
       const hyperparameters = group[0].hyperparameters
+      // Für den Episodenverlauf: unter den Seeds mit Verlauf der mit der höchsten Success Rate, sonst höchstem Reward
+      const withTrace = group
+        .map((run) => ({ run, summary: summaryOf.get(run.id) }))
+        .filter(({ summary }) => (summary?.trace_signals.length ?? 0) > 0)
+        .sort(
+          (a, b) =>
+            (nominal(b.summary, "success_rate") ?? b.summary?.last_success_rate ?? -1) -
+              (nominal(a.summary, "success_rate") ?? a.summary?.last_success_rate ?? -1) ||
+            b.run.reward - a.run.reward,
+        )
       return {
         key,
         name: group[0].name,
@@ -132,6 +144,7 @@ export function groupConfigurations(runs: Run[], summaries: RunSummary[] = []): 
         hyperparametersDiffer: group.some(
           (run) => JSON.stringify(run.hyperparameters) !== JSON.stringify(hyperparameters),
         ),
+        traceRun: withTrace.length ? { run: withTrace[0].run, signals: withTrace[0].summary!.trace_signals } : null,
       }
     })
     .sort(compareConfigurations)

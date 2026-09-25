@@ -12,7 +12,7 @@ type Entry<T> = { status: "success"; data: T } | { status: "error"; error: Error
  * Wird z. B. ein Run abgewählt und wieder ausgewählt, kommt er aus dem Speicher, ohne neue Anfrage.
  * Rückgabe: pro Schlüssel der Eintrag, oder undefined, solange er noch lädt.
  */
-function useCachedLoads<T>(keys: string[], load: (key: string) => Promise<T>) {
+export function useCachedLoads<T>(keys: string[], load: (key: string) => Promise<T>) {
   const [cache, setCache] = useState<Record<string, Entry<T>>>({})
 
   // Als ein String, damit der Effect nur bei einer echten Änderung der Schlüssel neu läuft

@@ -67,3 +67,21 @@ class EvaluationTable(Base):
     scenario: Mapped[str] = mapped_column(default="nominal", server_default="nominal")
     name: Mapped[str]  # z. B. "success_rate", "control_effort", "overshoot"
     value: Mapped[float]
+
+
+class TraceTable(Base):
+    """Ein Punkt im Verlauf einer Test-Episode: Wert eines Signals zu einer (simulierten) Zeit.
+
+    Beispiele für Signale: "angle", "ball_x", "u_0" ... "u_7" (Stellgrößen). Damit lässt sich
+    ansehen, wie ruhig oder unruhig ein fertiger Controller regelt.
+    """
+
+    __tablename__ = "traces"
+    __table_args__ = (Index("ix_traces_run_id_signal", "run_id", "signal"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
+    signal: Mapped[str]
+    t: Mapped[float]  # Sekunden seit Start der Episode (simulierte Zeit)
+    value: Mapped[float]
+
