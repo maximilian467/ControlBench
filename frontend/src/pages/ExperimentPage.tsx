@@ -7,6 +7,7 @@ import { HoldToDelete } from "@/components/HoldToDelete"
 import { Loader } from "@/components/Loader"
 import { LegendSymbol, MetricChart, type ChartSeries } from "@/components/MetricChart"
 import { MetricPicker } from "@/components/MetricPicker"
+import { RobustnessTable } from "@/components/RobustnessTable"
 import { Segmented } from "@/components/Segmented"
 import { StatStrip } from "@/components/StatStrip"
 import { useAsync } from "@/hooks/useAsync"
@@ -25,6 +26,7 @@ import type { Formatters } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import type { Messages } from "@/lib/messages"
 import { isRateMetric, NOMINAL, STANDARD_METRICS, SUCCESS_THRESHOLD } from "@/lib/metrics"
+import { robustnessMetrics } from "@/lib/robustness"
 import { cn } from "@/lib/utils"
 
 const MAX_SELECTED = 5
@@ -153,6 +155,9 @@ function ExperimentContent({ runs, summaries, onDeleteRun }: ContentProps) {
         colors={colors}
         onToggle={toggle}
       />
+
+      {/* Nur wenn es Kennwerte aus Robustheitstests gibt */}
+      {robustnessMetrics(configurations).length > 0 && <RobustnessTable configurations={configurations} />}
 
       <RunTable runs={runs} onDelete={onDeleteRun} />
     </>
