@@ -326,6 +326,26 @@ curl -X POST http://127.0.0.1:8000/experiments \
 
 See the [API reference](api.md) for all endpoints and fields.
 
+## Converting older data
+
+Before evaluations existed, training scripts often stored final values and robustness tests as metrics with a single point, e.g. `final_success_rate`, `final_mean_control_effort` or `friction_high_success_rate`. [`scripts/convert_final_metrics.py`](../scripts/convert_final_metrics.py) copies such single points into evaluations with a scenario, so they appear in the comparison table and the robustness table:
+
+| Metric | becomes scenario | key figure |
+|---|---|---|
+| `final_success_rate` | `nominal` | `success_rate` |
+| `final_l2_success_rate` | `level 2` | `success_rate` |
+| `friction_high_success_rate` | `friction_high` | `success_rate` |
+| `final_mean_control_effort` | `nominal` | `control_effort` |
+| `worst_success_rate` | `nominal` | `worst_success_rate` |
+
+Scenarios are recognized from the key figures that exist as `nominal_<name>`. Other single points (events, curve points of classical controllers) are skipped and listed. The metrics themselves stay unchanged; the script only adds evaluations and can be run again. Episode traces cannot be created this way, because they were never recorded.
+
+```bash
+python scripts/convert_final_metrics.py              # dry run: shows what would happen
+python scripts/convert_final_metrics.py --apply      # writes the evaluations
+python scripts/convert_final_metrics.py --experiment 3 --apply
+```
+
 ## Conventions for comparable data
 
 To keep runs of different approaches comparable:

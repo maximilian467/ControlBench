@@ -62,7 +62,7 @@ export function RobustnessTable({ configurations }: { configurations: Configurat
           <tbody>
             {rows.map(({ configuration, values, nominal, worst, worstScenario }) => (
               <tr key={configuration.key} className="border-b last:border-b-0">
-                <td className="py-2.5 pl-5 font-medium">{configuration.name}</td>
+                <td className="py-2.5 pr-3 pl-5 font-medium whitespace-nowrap">{configuration.name}</td>
                 {values.map((value, index) => (
                   <td
                     key={scenarios[index]}
