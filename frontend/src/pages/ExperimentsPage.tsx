@@ -1,12 +1,17 @@
+import { useState } from "react"
 import { Link } from "react-router"
 
+import { CategoryBadge } from "@/components/CategoryEditor"
 import { ErrorState } from "@/components/ErrorState"
 import { Loader } from "@/components/Loader"
 import { StatStrip } from "@/components/StatStrip"
 import { useAsync } from "@/hooks/useAsync"
-import { api, type Experiment, type Run } from "@/lib/api"
+import { useCategoryLabel } from "@/hooks/useCategoryLabel"
+import { api, type Experiment, type Run, type RunSummary } from "@/lib/api"
 import { groupConfigurations, type Configuration } from "@/lib/configurations"
 import { useI18n } from "@/lib/i18n"
+import { SUCCESS_THRESHOLD } from "@/lib/metrics"
+import { cn } from "@/lib/utils"
 
 type ExperimentSummary = {
   experiment: Experiment
@@ -17,7 +22,7 @@ type ExperimentSummary = {
 }
 
 /** Fasst die Runs pro Experiment zusammen: Anzahl, Controller, beste Konfiguration, letzter Run. */
-function summarize(experiments: Experiment[], runs: Run[]): ExperimentSummary[] {
+function summarize(experiments: Experiment[], runs: Run[], summaries: RunSummary[]): ExperimentSummary[] {
   return experiments
     .map((experiment) => {
       const own = runs.filter((run) => run.experiment_id === experiment.id)
@@ -25,8 +30,8 @@ function summarize(experiments: Experiment[], runs: Run[]): ExperimentSummary[] 
         experiment,
         runCount: own.length,
         controllers: [...new Set(own.map((run) => run.controller))],
-        // Beste Konfiguration = höchster mittlerer Reward über ihre Seeds
-        best: groupConfigurations(own)[0] ?? null,
+        // Beste Konfiguration = zuverlässigste (Success Rate, siehe groupConfigurations)
+        best: groupConfigurations(own, summaries)[0] ?? null,
         // Runs haben noch keinen Zeitstempel; die höchste ID ist der zuletzt gespeicherte
         lastRun: own.reduce<Run | null>((last, run) => (last === null || run.id > last.id ? run : last), null),
       }
@@ -35,17 +40,30 @@ function summarize(experiments: Experiment[], runs: Run[]): ExperimentSummary[] 
 }
 
 // Spaltenaufteilung, gemeinsam für Kopfzeile und Zeilen
-const COLUMNS = "grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_4rem_minmax(0,1.5fr)_minmax(0,1.9fr)_1rem] gap-x-6"
+const COLUMNS =
+  "grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.1fr)_4rem_minmax(0,1.5fr)_minmax(0,1.7fr)_1rem] gap-x-6"
+
+// Filterwert für "alle Kategorien"; null steht für "ohne Kategorie"
+const ALL = "__all__"
 
 export function ExperimentsPage() {
   const { t, f } = useI18n()
-  const result = useAsync(() => Promise.all([api.experiments(), api.runs()]), "experiments-overview")
+  const label = useCategoryLabel()
+  const [filter, setFilter] = useState<string | null>(ALL)
+  const result = useAsync(
+    () => Promise.all([api.experiments(), api.runs(), api.summaries(undefined, SUCCESS_THRESHOLD)]),
+    "experiments-overview",
+  )
 
   if (result.status === "loading") return <Loader label={t.loadingExperiments} />
   if (result.status === "error") return <ErrorState error={result.error} onRetry={result.reload} />
 
-  const [experiments, runs] = result.data
-  const summaries = summarize(experiments, runs)
+  const [experiments, runs, runSummaries] = result.data
+  const summaries = summarize(experiments, runs, runSummaries)
+  const categories = [...new Set(experiments.map((e) => e.category ?? null))].sort((a, b) =>
+    a === null ? 1 : b === null ? -1 : label(a).localeCompare(label(b)),
+  )
+  const shown = filter === ALL ? summaries : summaries.filter((s) => (s.experiment.category ?? null) === filter)
 
   return (
     <div className="flex flex-col gap-8">
@@ -62,15 +80,43 @@ export function ExperimentsPage() {
             stats={[
               { label: t.experiments, value: f.integer(experiments.length), numeric: true },
               { label: t.runs, value: f.integer(runs.length), numeric: true },
-              { label: t.controllers, value: [...new Set(runs.map((r) => r.controller))].join(" · ") || "–" },
-              { label: t.environments, value: [...new Set(experiments.map((e) => e.environment))].join(" · ") },
+              { label: t.controllers, value: f.integer(new Set(runs.map((r) => r.controller)).size), numeric: true },
+              { label: t.categories, value: f.integer(categories.filter((c) => c !== null).length), numeric: true },
             ]}
           />
 
           <section className="overflow-hidden rounded-lg border bg-card">
+            {categories.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 border-b px-5 py-3" role="radiogroup" aria-label={t.category}>
+                {[ALL, ...categories].map((category) => {
+                  const count =
+                    category === ALL
+                      ? experiments.length
+                      : experiments.filter((e) => (e.category ?? null) === category).length
+                  return (
+                    <button
+                      key={category ?? "none"}
+                      type="button"
+                      role="radio"
+                      aria-checked={filter === category}
+                      onClick={() => setFilter(category)}
+                      className={cn(
+                        "h-7 rounded-md border px-2.5 text-xs transition-colors",
+                        filter === category
+                          ? "border-ring bg-muted text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {category === ALL ? t.allCategories : label(category)}
+                      <span className="ml-1.5 font-mono text-faint-foreground">{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <div className={`${COLUMNS} border-b px-5 py-2.5 text-xs text-faint-foreground`}>
               <span>{t.experiment}</span>
-              <span>{t.environment}</span>
+              <span>{t.category}</span>
               <span>{t.controllers}</span>
               <span className="text-right">{t.runs}</span>
               <span>{t.bestConfiguration}</span>
@@ -78,7 +124,7 @@ export function ExperimentsPage() {
               <span />
             </div>
             <ul>
-              {summaries.map((summary) => (
+              {shown.map((summary) => (
                 <li key={summary.experiment.id} className="border-b last:border-b-0">
                   <ExperimentRow summary={summary} />
                 </li>
@@ -102,9 +148,11 @@ function ExperimentRow({ summary }: { summary: ExperimentSummary }) {
     >
       <div className="min-w-0">
         <p className="truncate font-medium">{experiment.name}</p>
-        {experiment.description && <p className="truncate text-xs text-faint-foreground">{experiment.description}</p>}
+        <p className="truncate font-mono text-xs text-faint-foreground">{experiment.environment}</p>
       </div>
-      <span className="truncate font-mono text-[13px] text-muted-foreground">{experiment.environment}</span>
+      <span className="min-w-0 truncate">
+        <CategoryBadge category={experiment.category} />
+      </span>
       <span className="truncate font-mono text-xs text-muted-foreground">
         {controllers.length ? controllers.join(" · ") : <span className="text-faint-foreground">–</span>}
       </span>
@@ -116,8 +164,8 @@ function ExperimentRow({ summary }: { summary: ExperimentSummary }) {
       ) : (
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="truncate">{best.name}</span>
-          <span className="font-mono text-xs text-muted-foreground tabular-nums">
-            {t.meanShort} {f.reward(best.rewardMean)}
+          <span className="font-mono text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+            {best.success === null ? `${t.meanShort} ${f.reward(best.rewardMean)}` : f.percent(best.success.mean)}
           </span>
         </span>
       )}

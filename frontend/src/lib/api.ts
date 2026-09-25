@@ -8,6 +8,7 @@ export type Experiment = {
   name: string
   environment: string
   description: string | null
+  category: string | null // Art der Aufgabe, z. B. "stabilization"; frei wählbar
 }
 
 export type Run = {
@@ -86,6 +87,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   experiments: () => request<Experiment[]>("/experiments"),
   experiment: (id: number) => request<Experiment>(`/experiments/${id}`),
+  updateExperiment: (id: number, changes: Partial<Omit<Experiment, "id">>) =>
+    request<Experiment>(`/experiments/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(changes),
+    }),
   deleteExperiment: (id: number) => request<void>(`/experiments/${id}`, { method: "DELETE" }),
   runs: (experimentId?: number) =>
     request<Run[]>(experimentId === undefined ? "/runs" : `/runs?experiment_id=${experimentId}`),

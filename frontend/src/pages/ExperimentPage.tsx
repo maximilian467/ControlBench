@@ -2,6 +2,7 @@ import { Fragment, useState, type ReactNode } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { ThinkingOrb } from "thinking-orbs"
 
+import { CategoryEditor } from "@/components/CategoryEditor"
 import { ErrorState } from "@/components/ErrorState"
 import { HoldToDelete } from "@/components/HoldToDelete"
 import { Loader } from "@/components/Loader"
@@ -54,6 +55,11 @@ export function ExperimentPage() {
     navigate("/")
   }
 
+  async function saveCategory(category: string | null) {
+    await api.updateExperiment(id, { category })
+    result.reload()
+  }
+
   async function deleteRun(runId: number) {
     await api.deleteRun(runId)
     result.reload()
@@ -68,7 +74,10 @@ export function ExperimentPage() {
         <header className="flex items-start justify-between gap-6">
           <div className="flex min-w-0 flex-col gap-1.5">
             <h1 className="text-2xl font-medium tracking-[-0.015em]">{experiment.name}</h1>
-            <p className="font-mono text-[13px] text-muted-foreground">{experiment.environment}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="font-mono text-[13px] text-muted-foreground">{experiment.environment}</p>
+              <CategoryEditor category={experiment.category} onSave={saveCategory} />
+            </div>
             {experiment.description && <p className="text-muted-foreground">{experiment.description}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-3">

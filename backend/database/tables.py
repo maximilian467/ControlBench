@@ -13,6 +13,8 @@ class ExperimentTable(Base):
     name: Mapped[str]
     environment: Mapped[str]
     description: Mapped[str | None]
+    # Art der Aufgabe, z. B. "stabilization" oder "locomotion". Frei wählbar; die Oberfläche schlägt eine Liste vor
+    category: Mapped[str | None]
 
 
 class RunTable(Base):

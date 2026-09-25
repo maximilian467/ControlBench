@@ -1,4 +1,4 @@
-import { Link, Outlet } from "react-router"
+import { Link, NavLink, Outlet } from "react-router"
 
 import { Segmented } from "@/components/Segmented"
 import { API_URL } from "@/lib/api"
@@ -16,6 +16,23 @@ export function AppShell() {
             <img src="/favicon.svg" alt="" className="size-5" />
             ControlBench
           </Link>
+          <nav className="mr-auto ml-8 flex items-center gap-1 text-sm">
+            {[
+              { to: "/", label: t.experiments, end: true },
+              { to: "/categories", label: t.categories, end: false },
+            ].map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `rounded-md px-2.5 py-1 transition-colors ${isActive ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
           <div className="flex items-center gap-4">
             <span className="font-mono text-xs text-faint-foreground">API {API_URL.replace(/^https?:\/\//, "")}</span>
             <Segmented value={language} onChange={setLanguage} options={LANGUAGES} aria-label={t.language} />

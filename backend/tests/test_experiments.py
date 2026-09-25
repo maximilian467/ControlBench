@@ -85,3 +85,29 @@ def test_delete_experiment_deletes_its_runs_and_metrics(client, engine, experime
 
 def test_delete_unknown_experiment_returns_404(client):
     assert client.delete("/experiments/999").status_code == 404
+
+
+def test_category_is_optional_and_can_be_changed(client, experiment):
+    assert experiment["category"] is None
+    created = client.post(
+        "/experiments", json={"name": "Ant", "environment": "Ant-v4", "category": "locomotion"}
+    ).json()
+    assert created["category"] == "locomotion"
+
+    res = client.patch(f"/experiments/{experiment['id']}", json={"category": "stabilization"})
+
+    assert res.status_code == 200
+    assert res.json()["category"] == "stabilization"
+    assert res.json()["name"] == experiment["name"]  # nicht mitgeschickt, unverändert
+
+
+def test_category_can_be_cleared(client, experiment):
+    client.patch(f"/experiments/{experiment['id']}", json={"category": "stabilization"})
+
+    assert client.patch(f"/experiments/{experiment['id']}", json={"category": ""}).json()["category"] is None
+    assert client.patch(f"/experiments/{experiment['id']}", json={"category": None}).json()["category"] is None
+
+
+def test_update_experiment_rejects_empty_name_and_unknown_id(client, experiment):
+    assert client.patch(f"/experiments/{experiment['id']}", json={"name": ""}).status_code == 422
+    assert client.patch("/experiments/999", json={"category": "x"}).status_code == 404

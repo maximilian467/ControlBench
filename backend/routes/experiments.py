@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.tables import ExperimentTable, RunTable
-from models.experiment import Experiment, ExperimentCreate
+from models.experiment import Experiment, ExperimentCreate, ExperimentUpdate
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -28,6 +28,25 @@ def get_experiment(experiment_id: int, db: Session = Depends(get_db)):
     experiment = db.get(ExperimentTable, experiment_id)
     if experiment is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
+    return experiment
+
+
+@router.patch("/{experiment_id}", response_model=Experiment)
+def update_experiment(experiment_id: int, data: ExperimentUpdate, db: Session = Depends(get_db)):
+    experiment = db.get(ExperimentTable, experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    changes = data.model_dump(exclude_unset=True)
+    # Name und Environment sind Pflichtfelder; Beschreibung und Kategorie dürfen mit null geleert werden
+    for required in ("name", "environment"):
+        if required in changes and not changes[required]:
+            raise HTTPException(status_code=422, detail=f"{required} must not be empty")
+    if changes.get("category") == "":
+        changes["category"] = None
+    for field, value in changes.items():
+        setattr(experiment, field, value)
+    db.commit()
+    db.refresh(experiment)
     return experiment
 
 

@@ -7,6 +7,17 @@ class ExperimentCreate(BaseModel):
     name: str
     environment: str  # z. B. "Pendulum-v1" oder "DoublePendulum"
     description: str | None = None
+    # Art der Aufgabe, z. B. "stabilization", "positioning", "locomotion"; frei wählbar
+    category: str | None = None
+
+
+class ExperimentUpdate(BaseModel):
+    """Experiment nachträglich ändern (PATCH /experiments/{id}); nur mitgeschickte Felder ändern sich."""
+
+    name: str | None = None
+    environment: str | None = None
+    description: str | None = None
+    category: str | None = None
 
 
 class Experiment(ExperimentCreate):

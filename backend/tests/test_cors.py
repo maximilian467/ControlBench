@@ -5,7 +5,7 @@ import pytest
 ALLOWED_ORIGIN = "http://127.0.0.1:5173"
 
 
-@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+@pytest.mark.parametrize("method", ["GET", "POST", "PATCH", "DELETE"])
 def test_frontend_origin_is_allowed(client, method):
     # So fragt der Browser vor einer Anfrage nach (Preflight)
     res = client.options(

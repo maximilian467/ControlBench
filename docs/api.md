@@ -11,6 +11,7 @@ All requests and responses use JSON. There is no authentication (ControlBench is
 | `POST` | `/experiments` | Create an experiment | `201` |
 | `GET` | `/experiments` | List all experiments | `200` |
 | `GET` | `/experiments/{id}` | Get one experiment | `200` |
+| `PATCH` | `/experiments/{id}` | Change name, environment, description or category; only fields that are sent are changed | `200` |
 | `DELETE` | `/experiments/{id}` | Delete an experiment **including all its runs and metrics** | `204` |
 | `POST` | `/runs` | Create a run | `201` |
 | `GET` | `/runs` | List all runs; optional `?experiment_id=1` | `200` |
@@ -53,7 +54,7 @@ Content-Type: application/json
 
 ```json
 201 Created
-{ "id": 1, "name": "Pendulum controller comparison", "environment": "Pendulum-v1", "description": "SAC, PPO and LQR with default parameters" }
+{ "id": 1, "name": "Pendulum controller comparison", "environment": "Pendulum-v1", "description": "SAC, PPO and LQR with default parameters", "category": null }
 ```
 
 | Field | Type | Required |
@@ -61,6 +62,30 @@ Content-Type: application/json
 | `name` | string | yes |
 | `environment` | string | yes |
 | `description` | string | no |
+
+**Category**
+
+`category` (optional) says what kind of task an experiment is. It is free text; the dashboard suggests these keys and translates them:
+
+| Key | Task |
+|---|---|
+| `stabilization` | keep a system in an (unstable) state, e.g. ball balancer, cart-pole |
+| `swing-up` | bring a system into the target state first, then hold it, e.g. pendulum swing-up |
+| `positioning` | reach a target point, e.g. reacher, robot arm |
+| `tracking` | follow a moving target or a trajectory |
+| `disturbance-rejection` | recover quickly from disturbances |
+| `locomotion` | walking or running, e.g. ant, humanoid |
+
+The **Categories** page compares controllers across all experiments of a category. Rewards cannot be compared between environments, so it uses the rank of each controller within each experiment, the success rate and the rank of the control effort.
+
+```http
+PATCH /experiments/1
+Content-Type: application/json
+
+{ "category": "stabilization" }
+```
+
+Send `"category": null` or `""` to remove the category. `name` and `environment` must not be empty (`422`).
 
 ## Runs
 
