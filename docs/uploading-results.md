@@ -31,76 +31,126 @@ LQR, seed=0 läuft ...
 | Which environment? | `Pendulum-v1` |
 | Which configurations? | "SAC default", "PPO default", "LQR" |
 | How many seeds per configuration? | RL: at least 3, better 5. A deterministic controller such as LQR: 1 |
-| Which metrics over time? | e.g. `success_rate` and `episode_reward` |
+| Which metrics over time? | e.g. `success_rate`, `episode_reward`, `control_effort` |
+| What counts as success? | one yes/no question per test episode, see step 4 |
+| Which robustness tests? | e.g. heavier mass, sensor noise, pushes, other terrain |
 | How often a data point? | see [Large trainings](#large-trainings-millions-of-steps) |
 
 **Step 2: Copy the template** into your project, e.g. next to your training script.
 
-**Step 3: Enter experiment and configurations** at the top of the file:
+**Step 3: Enter experiment, configurations and scenarios** at the top of the file:
 
 ```python
 EXPERIMENT = {
     "name": "Pendulum swing-up",
     "environment": "Pendulum-v1",
     "description": "SAC vs. PPO vs. LQR, default parameters",
+    "category": "swing-up",  # kind of task, see below
 }
 
 CONFIGURATIONS = [
-    {"name": "SAC default", "controller": "SAC", "seeds": [0, 1, 2, 3, 4]},
-    {"name": "PPO default", "controller": "PPO", "seeds": [0, 1, 2, 3, 4]},
-    {"name": "LQR", "controller": "LQR", "seeds": [0]},
+    {"name": "SAC default", "controller": "SAC", "seeds": [0, 1, 2, 3, 4],
+     "hyperparameters": {"learning_rate": 3e-4, "gamma": 0.99}},
+    {"name": "PPO default", "controller": "PPO", "seeds": [0, 1, 2, 3, 4],
+     "hyperparameters": {"learning_rate": 3e-4, "n_steps": 2048}},
+    {"name": "LQR", "controller": "LQR", "seeds": [0], "trains": False,
+     "hyperparameters": {"Q": "diag(10, 1)", "R": 0.1}},
 ]
+
+# Robustness tests: every finished controller is also evaluated under changed conditions
+SCENARIOS = {"nominal": ..., "mass+20%": ..., "sensor_noise": ...}
 ```
 
-`name` is the name of the configuration. **All seeds of a configuration get the same name**; that is how ControlBench averages over them. If you change hyperparameters, add a new configuration with a new name, e.g. `{"name": "SAC lr 1e-3", "controller": "SAC", ...}`.
+- `name` is the name of the configuration. **All seeds of a configuration get the same name**; that is how ControlBench averages over them. If you change hyperparameters, add a new configuration with a new name, e.g. `"SAC lr 1e-3"`.
+- `trains: False` marks controllers without training (LQR, PID, MPC, ...). The dashboard draws them as a dashed **reference line** instead of a learning curve.
+- `hyperparameters` is free-form; the dashboard shows it when a configuration is expanded.
+- `category` says what kind of task the experiment is. Suggested keys: `stabilization`, `swing-up`, `positioning`, `tracking`, `disturbance-rejection`, `locomotion`. Custom categories are allowed. The **Categories** page compares controllers across all experiments of a category.
+- `SCENARIOS` are the robustness tests. `nominal` means unchanged conditions; every other name becomes a column in the robustness table. Different terrains for a walking robot are scenarios too (`flat`, `stairs`, `rough`).
 
-**Step 4: Replace `fake_run`** with your real run. The function receives the configuration and the seed and returns two things:
+**Step 4: Define success.** The success rate is the **share of successful test episodes**. It is therefore always between 0 and 1 and comparable across all tasks, from a pendulum to a walking robot; no normalization is needed. The only task-specific part is one question per episode: success or not? That is `is_success`, built from small building blocks in the template:
 
-- `results`: the **final results** of the run, one number per field. They end up in the `runs` table.
-- `metrics`: the **curves**, any number of points. They end up in the `metrics` table.
+| Building block | Success if ... |
+|---|---|
+| `holds_within(signal, tolerance, hold_time, until_end=False)` | the absolute value of the signal stays within the tolerance for at least `hold_time` seconds in a row (with `until_end=True`: at the end of the episode) |
+| `stays_between(signal, low, high)` | the signal never leaves the range, e.g. "never fell over" |
+| `final_at_least(signal, minimum)` | the signal is at least `minimum` at the end, e.g. distance walked |
+| `all_of(*conditions)` | all conditions hold |
+
+```python
+# Pendulum: angle within 0.1 rad for 1 s
+is_success = holds_within("angle", tolerance=0.1, hold_time=1.0)
+
+# Ball balancer: ball within 2 cm of the target for 0.5 s, never dropped
+is_success = all_of(holds_within("ball_error", 0.02, 0.5), stays_between("ball_height", 0.0, math.inf))
+
+# Reacher: at the target at the end, for at least 0.2 s
+is_success = holds_within("distance_to_target", 0.01, 0.2, until_end=True)
+
+# Ant / humanoid: at least 5 m forward without falling
+is_success = all_of(final_at_least("x_position", 5.0), stays_between("torso_height", 0.25, math.inf))
+```
+
+An episode is a dictionary `{"dt": 0.02, "signals": {"angle": [...], ...}, "actions": [[u0, u1, ...], ...]}` with one entry per time step. If none of the building blocks fits, write `is_success` yourself: any function `episode -> bool`.
+
+**Step 5: Replace `fake_run`** with your real run. It receives the configuration and the seed and returns a dictionary with four parts:
+
+| Part | What | Table |
+|---|---|---|
+| `results` | final results, one number per field | `runs` |
+| `metrics` | curves over training, e.g. `success_rate` over the steps | `metrics` |
+| `evaluations` | key figures of the finished controller per scenario, e.g. `success_rate`, `control_effort` | `evaluations` |
+| `trace` | one test episode: signals and actuator commands over simulated time | `traces` |
 
 The skeleton, independent of the library you train with:
 
 ```python
-def my_run(configuration: dict, seed: int) -> tuple[dict, list[dict]]:
+def my_run(configuration: dict, seed: int) -> dict:
     # 1. Seed every source of randomness so the run is reproducible
     random.seed(seed)
     numpy.random.seed(seed)
     torch.manual_seed(seed)
-    env.reset(seed=seed)
 
     # 2. Build the controller for this configuration
-    agent = build_agent(configuration["controller"])  # your function
+    agent = build_agent(configuration)  # your function
 
-    # 3. Train and collect data points regularly
+    # 3. Train and collect data points regularly (controllers without training skip this)
     metrics = []
     start = time.perf_counter()
     for step in range(TOTAL_STEPS):
         agent.train_step()  # your training step
-
         if step % LOG_EVERY == 0:
+            episodes = [run_test_episode(agent, env) for _ in range(5)]  # your function, returns an episode dict
             elapsed = time.perf_counter() - start  # seconds since start: for the wall-clock axis
-            metrics.append({"name": "success_rate", "step": step, "value": evaluate_success(agent), "time": elapsed})
-            metrics.append({"name": "episode_reward", "step": step, "value": last_episode_reward, "time": elapsed})
+            metrics.append({"name": "success_rate", "step": step, "value": success_rate(episodes, is_success), "time": elapsed})
+            metrics.append({"name": "control_effort", "step": step, "value": numpy.mean([control_effort(e) for e in episodes]), "time": elapsed})
 
-    # 4. Final results
+    # 4. Evaluate the finished controller in every scenario
+    evaluations = []
+    for scenario in SCENARIOS:
+        episodes = [run_test_episode(agent, make_env(scenario)) for _ in range(EVAL_EPISODES)]
+        evaluations.append({"scenario": scenario, "name": "success_rate", "value": success_rate(episodes, is_success)})
+        evaluations.append({"scenario": scenario, "name": "control_effort", "value": numpy.mean([control_effort(e) for e in episodes])})
+
+    # 5. Final results and one nominal test episode as trace
     results = {
-        "reward": final_reward,            # required: higher = better
-        "stability_time": 2.4,             # seconds until stable, or None if never stable
-        "recovery_time": None,             # seconds until recovery after a disturbance, or None
+        "reward": final_reward,                     # required: higher = better
+        "stability_time": 2.4,                      # seconds until stable, or None if never stable
         "num_steps": TOTAL_STEPS,
-        "duration": time.perf_counter() - start,  # wall-clock time in seconds
+        "duration": time.perf_counter() - start,    # wall-clock time in seconds
     }
-    return results, metrics
+    trace = episode_to_trace(run_test_episode(agent, make_env("nominal")))
+    return {"results": results, "metrics": metrics, "evaluations": evaluations, "trace": trace}
 ```
 
-Then replace the call `fake_run(configuration, seed)` in `main()` with `my_run(configuration, seed)`. The template handles everything else: finding or creating the experiment, the local backup, uploading the run and its metrics in batches.
+Then replace the call `fake_run(configuration, seed)` in `main()` with `my_run(configuration, seed)`. The template handles everything else: finding or creating the experiment, the local backup, uploading run, metrics, evaluations and trace in batches.
 
 Keep in mind:
 
-- **You define `success_rate` yourself.** For the pendulum, e.g. the share of evaluation episodes in which the angle stays below 0.1 rad for more than 1 s at the end. What matters is that all configurations use the same definition.
+- **`control_effort(episode)`** computes ∫‖u‖² dt: the squared actuator commands, summed over all actuators and integrated over time. It works for one actuator (pendulum) as well as for eight (ant). Lower means the controller reaches its goal with less force or energy.
+- **`episode_to_trace(episode)`** turns an episode into the trace format: all signals plus the actuator commands as `u_0`, `u_1`, ...
 - **`time` is the time since the start of the run**, measured with `time.perf_counter()`. Without `time`, a point only appears in the chart over steps.
 - **`null` / `None` means "not reached" or "not measured".** Never use `0` or `-1` as a placeholder; it distorts the means.
+- **Standard metric names** (`STANDARD_METRICS` in the template) appear at the top of the metric picker in the dashboard: `success_rate`, `episode_reward`, `control_effort`, `episode_length`, `tracking_error`. Any other name is allowed and can be found with the search.
 
 <details>
 <summary><b>Example: Stable-Baselines3 callback</b> (sketch, adapt to your setup)</summary>
@@ -139,9 +189,9 @@ class ControlBenchCallback(BaseCallback):
         return True  # False would stop the training
 
 
-def my_run(configuration: dict, seed: int) -> tuple[dict, list[dict]]:
+def my_run(configuration: dict, seed: int) -> dict:
     algorithm = {"SAC": SAC, "PPO": PPO}[configuration["controller"]]
-    model = algorithm("MlpPolicy", "Pendulum-v1", seed=seed)
+    model = algorithm("MlpPolicy", "Pendulum-v1", seed=seed, **configuration.get("hyperparameters", {}))
     callback = ControlBenchCallback(log_every=LOG_EVERY)
 
     start = time.perf_counter()
@@ -152,28 +202,32 @@ def my_run(configuration: dict, seed: int) -> tuple[dict, list[dict]]:
         "num_steps": TOTAL_STEPS,
         "duration": time.perf_counter() - start,
     }
-    return results, callback.metrics
+    # Evaluations and trace: run test episodes with model.predict(...) as in the skeleton above
+    return {"results": results, "metrics": callback.metrics, "evaluations": [], "trace": []}
 ```
 
 </details>
 
-**Step 5: Run and check.** Start the backend, then your script. Open the experiment in the dashboard and check:
+**Step 6: Run and check.** Start the backend, then your script. Open the experiment in the dashboard and check:
 
-- Are all configurations listed in the comparison table, each with the expected number of seeds?
-- Do the curves appear over steps **and** over wall-clock time?
+- Are all configurations listed in the comparison table, each with the expected number of seeds, success rate and control effort?
+- Do the curves appear over steps **and** over wall-clock time? Are controllers without training drawn as dashed reference lines?
+- Does the robustness table show your scenarios, and the episode trace your signals?
 
 ## Template settings
 
 | Variable | Default | Effect |
 |---|---|---|
 | `API_URL` | `http://127.0.0.1:8000` | address of the backend |
-| `EXPERIMENT` | name, environment, description | the experiment the runs belong to |
-| `CONFIGURATIONS` | SAC and PPO with 5 seeds each, LQR with one | the compared configurations, each with `name`, `controller` and `seeds` |
+| `EXPERIMENT` | name, environment, description, category | the experiment the runs belong to |
+| `CONFIGURATIONS` | SAC and PPO with 5 seeds each, LQR with one | the compared configurations, each with `name`, `controller`, `seeds` and optionally `trains` and `hyperparameters` |
+| `SCENARIOS` | `nominal`, `mass+20%`, `sensor_noise`, `impulse` | robustness tests; in the demo the value is the strength of the disturbance |
+| `EVAL_EPISODES` | `20` | test episodes per scenario |
 | `REUSE_EXPERIMENT` | `True` | If an experiment with the **same name and environment** already exists, the runs are appended to it. This lets you add seeds or configurations later. With `False`, every start creates a new experiment. |
 | `SAVE_LOCAL_BACKUP` | `True` | Every run is saved as JSON in `experiments/results/` **before** it is uploaded. |
 | `TOTAL_STEPS` | `20_000` | length of a run |
 | `LOG_EVERY` | `500` | distance between data points in steps |
-| `METRICS_BATCH_SIZE` | `10_000` | metric points per request when uploading |
+| `BATCH_SIZE` | `10_000` | metric or trace points per request when uploading |
 
 ## Behavior on errors
 
@@ -203,7 +257,7 @@ RL trainings with 20, 100 or 200 million steps are normal. PPO typically takes m
 Two things make this possible:
 
 - The dashboard only loads the metric that is shown, and the server **downsamples it to at most 1,000 points** per run (`max_points`). Instead of 17.9 MB, 89 kB are transferred. The first and last points are always kept.
-- The template uploads metric points **in batches** (`METRICS_BATCH_SIZE`), so no single request runs into a timeout.
+- The template uploads metric and trace points **in batches** (`BATCH_SIZE`), so no single request runs into a timeout.
 
 **One limitation:** the template uploads a run only **after** it has finished. For a training that runs for days, a crash means the run is neither in ControlBench nor in the local backup. Save your own checkpoints for such long trainings.
 

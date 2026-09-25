@@ -18,28 +18,35 @@ ControlBench is a local experiment tracker and benchmarking dashboard for reinfo
 
 When you solve a control problem, such as swinging up and balancing a pendulum, once with an RL agent (SAC, PPO, TQC, …) and once with a classical controller (PID, LQR, MPC, …), you want to answer questions like:
 
-- Which approach reaches the higher reward, and how much do results vary across seeds?
+- Does the controller work at all, i.e. what is its success rate, and how much do results vary across seeds?
 - After how many training steps, and after how much compute, does the RL agent become reliably stable?
-- How quickly does the system stabilize?
+- How quickly does the system stabilize, how much control effort does it need, and how robust is it to changed conditions?
+- Which kind of controller works best for which kind of task?
 
 RL results usually end up scattered across CSV files, TensorBoard runs, notebooks and log folders, and classical control results somewhere else. ControlBench puts both into the same structure: **experiment → configuration → seeds → metrics**. It compares configurations, not single runs, because one lucky seed says little about an algorithm.
 
 ## Features
 
-- **RL and classical controllers side by side:** any controller name, learned or hand-designed, in one experiment
-- **Seed-aware comparison:** runs with the same controller and name form a configuration; per configuration you get the mean reward ± standard deviation, range, how many seeds stabilized, mean time to stable and mean wall-clock time
-- **Learning curves** averaged over seeds with a min–max band, switchable between **environment steps and wall-clock time**
-- **Free-form metrics:** any metric name (`success_rate`, `episode_reward`, `angle`, `torque`, …) without schema changes
+- **RL and classical controllers side by side:** any controller name, learned or hand-designed, in one experiment. Controllers without training (LQR, PID, MPC, ...) appear as dashed **reference lines** across the learning curves
+- **Seed-aware comparison:** runs with the same controller and name form a configuration; per configuration you get the **success rate**, when it first reached 90 % (steps and wall-clock time), the **control effort** (∫‖u‖² dt), the reward and the wall-clock time, each as mean ± standard deviation. The best configuration is the one that works most reliably, not the one with the highest reward
+- **Learning curves** averaged over seeds with a min–max or **95 % confidence** band, switchable between **environment steps and wall-clock time**, optionally cut to an **equal budget**; single final values are drawn as markers with error bars
+- **Robustness:** key figures per scenario (heavier mass, sensor noise, pushes, other terrain); the dashboard shows the worst scenario and the drop vs. nominal
+- **Episode traces:** states and actuator commands of a test episode over simulated time, to see how calmly or nervously a controller acts
+- **Categories:** classify experiments by task type (stabilization, swing-up, positioning, tracking, locomotion, ...) and see which controller wins per category, using ranks instead of rewards that are not comparable between environments
+- **Hyperparameters** stored per configuration and shown in the dashboard
+- **Free-form metrics:** any metric name without schema changes; the standard metrics are one click away, all others behind a search field
 - **Built for long trainings:** batched uploads and server-side downsampling (`max_points`), tested with 4.6 M metric points
 - **Generic REST API** (FastAPI) with interactive OpenAPI docs at `/docs`
-- **Framework-agnostic ingestion:** anything that can send JSON over HTTP works; a Python upload template is included
+- **Framework-agnostic ingestion:** anything that can send JSON over HTTP works; a Python upload template with building blocks for success rate and control effort is included
 - **Local-first:** SQLite storage with Alembic migrations, React + TypeScript dashboard in English and German
 
 ## Screenshots
 
 | Overview | Experiment detail |
 |---|---|
-| ![Overview of all experiments](docs/screenshots/overview.png) | ![SAC, PPO and LQR compared in one experiment](docs/screenshots/experiment.png) |
+| ![Overview of all experiments with categories](docs/screenshots/overview.png) | ![SAC, PPO and LQR compared in one experiment; LQR as reference line](docs/screenshots/experiment.png) |
+| **Episode trace and robustness** | **Categories** |
+| ![Actuator command of a test episode and success rate per robustness scenario](docs/screenshots/trace-robustness.png) | ![Controller standings per task category](docs/screenshots/categories.png) |
 
 ## Architecture
 
